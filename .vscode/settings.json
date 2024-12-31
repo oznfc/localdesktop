@@ -1,0 +1,10 @@
+{
+    "cSpell.words": [
+        "eframe",
+        "egui",
+        "Wgpu",
+        "winit",
+        "xbuild"
+    ],
+    "rust-analyzer.cargo.target": "aarch64-linux-android"
+}
