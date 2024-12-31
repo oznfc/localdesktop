@@ -1,5 +1,7 @@
 use eframe::{egui, NativeOptions};
 
+pub mod arch;
+
 #[cfg(target_os = "android")]
 use egui_winit::winit;
 #[cfg(target_os = "android")]
