@@ -1,8 +1,7 @@
 use eframe::NativeOptions;
-use polar_bear::DemoApp;
+use polar_bear::PolarBearApp;
 
 fn main() -> Result<(), eframe::Error> {
-    polar_bear::arch::boot();
     let options = NativeOptions::default();
-    DemoApp::run(options)
+    PolarBearApp::run(options)
 }

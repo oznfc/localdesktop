@@ -1,3 +1,10 @@
+use std::{
+    io::{BufRead, BufReader},
+    process::Child,
+    thread,
+};
+
+use arch::arch_run;
 use eframe::{egui, NativeOptions};
 
 pub mod arch;
@@ -19,26 +26,49 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
         renderer: Renderer::Wgpu,
         ..Default::default()
     };
-    DemoApp::run(options).unwrap();
+    PolarBearApp::run(options).unwrap();
 }
 
-#[derive(Default)]
-pub struct DemoApp {
-    demo_windows: egui_demo_lib::DemoWindows,
+pub struct PolarBearApp {
+    arch: Child,
+    logs: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
-impl DemoApp {
+impl PolarBearApp {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
-        eframe::run_native(
-            "Polar Bear",
-            options,
-            Box::new(|_cc| Ok(Box::<DemoApp>::default())),
-        )
+        let arch = arch_run(&["uname", "-a"]).unwrap();
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut app = PolarBearApp {
+            arch,
+            logs: logs.clone(),
+        };
+        let stdout = app.arch.stdout.take().unwrap();
+        thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                let line = line.unwrap();
+                let mut logs = logs.lock().unwrap();
+                logs.push(line);
+            }
+        });
+        eframe::run_native("Polar Bear", options, Box::new(|_cc| Ok(Box::new(app))))
     }
 }
 
-impl eframe::App for DemoApp {
+impl eframe::App for PolarBearApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.demo_windows.ui(ctx);
+        egui::SidePanel::right("log_panel")
+            .resizable(true)
+            .default_width(150.0)
+            .width_range(80.0..=200.0)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.heading("Logs");
+                });
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let logs = self.logs.lock().unwrap();
+                    ui.label(logs.join("\n"));
+                });
+            });
     }
 }
