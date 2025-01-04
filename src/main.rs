@@ -2,6 +2,7 @@ use eframe::NativeOptions;
 use polar_bear::PolarBearApp;
 
 fn main() -> Result<(), eframe::Error> {
-    let options = NativeOptions::default();
+    let mut options = NativeOptions::default();
+    options.viewport = options.viewport.with_fullscreen(true);
     PolarBearApp::run(options)
 }

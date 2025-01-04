@@ -1,10 +1,10 @@
 use std::{
-    io::{BufRead, BufReader},
-    process::Child,
+    collections::VecDeque,
+    sync::{Arc, Mutex},
     thread,
 };
 
-use arch::arch_run;
+use arch::{arch_run, arch_run_with_log};
 use eframe::{egui, NativeOptions};
 
 pub mod arch;
@@ -30,25 +30,30 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
 }
 
 pub struct PolarBearApp {
-    arch: Child,
-    logs: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    logs: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl PolarBearApp {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
-        let arch = arch_run(&["uname", "-a"]).unwrap();
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let mut app = PolarBearApp {
-            arch,
-            logs: logs.clone(),
-        };
-        let stdout = app.arch.stdout.take().unwrap();
+        let logs = Arc::new(Mutex::new(VecDeque::new()));
+        let app = PolarBearApp { logs: logs.clone() };
         thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                let line = line.unwrap();
-                let mut logs = logs.lock().unwrap();
-                logs.push(line);
+            arch_run_with_log(&["uname", "-a"], &logs);
+            loop {
+                let installed = arch_run(&["pacman", "-Qg", "plasma"])
+                    .wait()
+                    .expect("pacman -Qg plasma failed")
+                    .success();
+                if installed {
+                    arch_run_with_log(&["weston"], &logs);
+                    break;
+                } else {
+                    arch_run(&["rm", "/var/lib/pacman/db.lck"]);
+                    arch_run_with_log(
+                        &["pacman", "-Syu", "plasma", "weston", "--noconfirm"],
+                        &logs,
+                    );
+                }
             }
         });
         eframe::run_native("Polar Bear", options, Box::new(|_cc| Ok(Box::new(app))))
@@ -59,16 +64,18 @@ impl eframe::App for PolarBearApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::right("log_panel")
             .resizable(true)
-            .default_width(150.0)
-            .width_range(80.0..=200.0)
+            .default_width(320.0)
+            .width_range(80.0..=ctx.available_rect().width() / 2.0)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.heading("Logs");
                 });
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let logs = self.logs.lock().unwrap();
-                    ui.label(logs.join("\n"));
-                });
+                egui::ScrollArea::vertical()
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        let logs = self.logs.lock().unwrap();
+                        ui.label(logs.iter().cloned().collect::<Vec<_>>().join("\n"))
+                    });
             });
     }
 }
