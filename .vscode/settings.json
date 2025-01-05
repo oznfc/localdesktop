@@ -7,5 +7,6 @@
         "xbuild"
     ],
     "rust-analyzer.cargo.target": "aarch64-linux-android",
-    "rust-analyzer.cargo.allTargets": true
+    "rust-analyzer.cargo.allTargets": true,
+    "rust-analyzer.check.allTargets": true
 }

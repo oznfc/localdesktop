@@ -8,9 +8,15 @@ use arch::{arch_run, arch_run_with_log};
 use eframe::{egui, NativeOptions};
 
 pub mod arch;
+pub mod config;
+pub mod logging;
+pub mod wayland;
 
 #[cfg(target_os = "android")]
 use egui_winit::winit;
+use logging::{log_format, log_to_panel, PolarBearExpectation};
+use wayland::PolarBearCompositor;
+
 #[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
@@ -31,20 +37,45 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
 
 pub struct PolarBearApp {
     logs: Arc<Mutex<VecDeque<String>>>,
+    compositor: Arc<PolarBearCompositor>,
 }
 
 impl PolarBearApp {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
         let logs = Arc::new(Mutex::new(VecDeque::new()));
-        let app = PolarBearApp { logs: logs.clone() };
+        let compositor = Arc::new(PolarBearCompositor {});
+        let app = PolarBearApp {
+            logs: Arc::clone(&logs),
+            compositor: Arc::clone(&compositor),
+        };
         thread::spawn(move || {
             arch_run_with_log(&["uname", "-a"], &logs);
             loop {
                 let installed = arch_run(&["pacman", "-Qg", "plasma"])
                     .wait()
-                    .expect("pacman -Qg plasma failed")
+                    .pb_expect("pacman -Qg plasma failed")
                     .success();
                 if installed {
+                    match compositor.run() {
+                        Ok(_) => {
+                            log_to_panel(
+                                &log_format(
+                                    "POLAR BEAR COMPOSITOR STARTED",
+                                    "Polar Bear Compositor started successfully",
+                                ),
+                                &logs,
+                            );
+                        }
+                        Err(e) => {
+                            log_to_panel(
+                                &log_format(
+                                    "POLAR BEAR COMPOSITOR RUNTIME ERROR",
+                                    &format!("{}", e),
+                                ),
+                                &logs,
+                            );
+                        }
+                    }
                     arch_run_with_log(&["weston"], &logs);
                     break;
                 } else {

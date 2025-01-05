@@ -16,6 +16,10 @@ codegen-units = 1
 
 [dependencies]
 log = "0.4"
+wayland-server = "0.31.6"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+expanduser = "1.2.2"
 
 [target.'cfg(not(target_os = "android"))'.dependencies.eframe]
 version = "0.30"
