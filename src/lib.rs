@@ -4,7 +4,7 @@ use std::{
     thread,
 };
 
-use arch::{arch_run, arch_run_with_log};
+use arch::{arch_run, arch_run_with_log, scaffold};
 use eframe::{egui, NativeOptions};
 
 pub mod arch;
@@ -16,10 +16,13 @@ pub mod wayland;
 use egui_winit::winit;
 use logging::{log_format, log_to_panel, PolarBearExpectation};
 use wayland::PolarBearCompositor;
+use winit::platform::android::activity::AndroidApp;
+pub mod application_context;
+use application_context::ApplicationContext;
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-fn android_main(app: winit::platform::android::activity::AndroidApp) {
+fn android_main(app: AndroidApp) {
     use eframe::Renderer;
 
     std::env::set_var("RUST_BACKTRACE", "full");
@@ -38,17 +41,33 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
 pub struct PolarBearApp {
     logs: Arc<Mutex<VecDeque<String>>>,
     compositor: Arc<PolarBearCompositor>,
+    #[cfg(target_os = "android")]
+    android_context: Arc<ApplicationContext>,
 }
 
 impl PolarBearApp {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
         let logs = Arc::new(Mutex::new(VecDeque::new()));
         let compositor = Arc::new(PolarBearCompositor {});
+        #[cfg(target_os = "android")]
+        let android_context = Arc::new(ApplicationContext::new(
+            options
+                .android_app
+                .clone()
+                .pb_expect("android_app is None. Make sure you are running on Android!"),
+        ));
         let app = PolarBearApp {
             logs: Arc::clone(&logs),
             compositor: Arc::clone(&compositor),
+            #[cfg(target_os = "android")]
+            android_context: Arc::clone(&android_context),
         };
         thread::spawn(move || {
+            // Step 1. Setup Arch FS if not already installed
+            #[cfg(target_os = "android")]
+            scaffold::scaffold(&android_context, &logs);
+
+            // Step 2. Install dependencies if not already installed
             arch_run_with_log(&["uname", "-a"], &logs);
             loop {
                 let installed = arch_run(&["pacman", "-Qg", "plasma"])

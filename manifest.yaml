@@ -1,0 +1,17 @@
+icon: assets/icon.png
+android:
+  assets:
+    - assets/archlinux-aarch64-pd-v4.6.0.tar.xz
+  runtime_libs:
+    - assets/libs
+  manifest:
+    package: app.polarbear
+    sdk:
+      min_sdk_version: 21
+      target_sdk_version: 33
+    application:
+      label: "Polar Bear"
+    uses_permission:
+      - name: android.permission.INTERNET
+      - name: android.permission.ACCESS_NETWORK_STATE
+      - name: android.permission.POST_NOTIFICATIONS

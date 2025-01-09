@@ -1,12 +1,6 @@
 {
-    "cSpell.words": [
-        "eframe",
-        "egui",
-        "Wgpu",
-        "winit",
-        "xbuild"
-    ],
-    "rust-analyzer.cargo.target": "aarch64-linux-android",
-    "rust-analyzer.cargo.allTargets": true,
-    "rust-analyzer.check.allTargets": true
+  "cSpell.words": ["eframe", "egui", "Wgpu", "winit", "xbuild"],
+  "rust-analyzer.cargo.target": "aarch64-linux-android",
+  "rust-analyzer.cargo.allTargets": true,
+  "rust-analyzer.check.allTargets": true
 }

@@ -5,6 +5,8 @@ use std::io::BufRead;
 use std::process::{Child, Command, Stdio};
 use std::{collections::VecDeque, io::BufReader, sync::Mutex};
 
+pub mod scaffold;
+
 #[cfg(target_os = "android")]
 fn android_arch_run(command: &[&str]) -> Child {
     // On Android, Arch Linux file system was extracted to:
