@@ -17,6 +17,7 @@ codegen-units = 1
 [dependencies]
 jni = "0.21.1"
 log = "0.4"
+mockall = "0.13.1"
 tar = "0.4.43"
 wayland-server = "0.31.6"
 xz2 = "0.1.7"
@@ -35,7 +36,7 @@ default-features = false
 [target.'cfg(target_os = "android")'.dependencies.eframe]
 version = "0.30"
 default-features = false
-features = ["wgpu", "android-native-activity", "default_fonts"]
+features = ["glow", "android-native-activity", "default_fonts"]
 
 # Used to get same winit used by eframe.
 [target.'cfg(target_os = "android")'.dependencies.egui-winit]

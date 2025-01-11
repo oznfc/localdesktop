@@ -1,47 +1,53 @@
+use crate::application_context::get_application_context;
 use crate::config;
-use crate::logging::{log_format, log_to_panel};
+use crate::logging::{log_to_panel, PolarBearExpectation};
+use egui_winit::winit::platform::android::activity::AndroidApp;
 use std::collections::VecDeque;
-use std::fs::{self, File};
-use std::io::BufReader;
+use std::fs;
 use std::sync::{Arc, Mutex};
 use tar::Archive;
 use xz2::read::XzDecoder;
 
-#[cfg(target_os = "android")]
-use crate::application_context::ApplicationContext;
-
-#[cfg(target_os = "android")]
-pub fn scaffold(context: &ApplicationContext, logs: &Arc<Mutex<VecDeque<String>>>) {
+pub fn scaffold(android_app: &AndroidApp, logs: &Arc<Mutex<VecDeque<String>>>) {
+    let context = get_application_context().pb_expect("Failed to get application context");
+    println!("Application context: {:?}", context);
     let fs_root = std::path::Path::new(config::ARCH_FS_ROOT);
-    let tar_file = context.data_dir.join(config::ARCH_FS_ARCHIVE);
-    let temp_dir = context
-        .data_dir
-        .join(fs_root.file_name().unwrap().to_str().unwrap().to_owned() + ".lock");
+    let tar_file = android_app
+        .asset_manager()
+        .open(
+            std::ffi::CString::new(config::ARCH_FS_ARCHIVE)
+                .pb_expect("Failed to create CString from ARCH_FS_ARCHIVE")
+                .as_c_str(),
+        )
+        .pb_expect("Failed to open Arch Linux FS .tar.xz in asset manager");
 
     let mut should_pacstrap = false;
-    if !fs_root.exists() || fs::read_dir(fs_root).unwrap().next().is_none() {
+    if !fs_root.exists()
+        || fs::read_dir(fs_root)
+            .pb_expect("Failed to read fs_root directory")
+            .next()
+            .is_none()
+    {
         should_pacstrap = true;
-        log_to_panel(
-            &log_format("INFO", "Arch Linux is not installed! Installing..."),
-            logs,
-        );
+        log_to_panel("Arch Linux is not installed! Installing...", logs);
     }
 
     if should_pacstrap {
-        log_to_panel(&log_format("INFO", "(This may take a few minutes.)"), logs);
+        log_to_panel("(This may take a few minutes.)", logs);
 
-        // Ensure the temporary directory is clean
-        fs::remove_dir_all(&temp_dir).unwrap_or(());
-        fs::create_dir_all(&temp_dir).unwrap();
+        // Ensure the extracted directory is clean
+        let extracted_dir = &context.data_dir.join("archlinux-aarch64");
+        fs::remove_dir_all(extracted_dir).unwrap_or(());
 
-        // Extract tar file here
-        let tar_gz = File::open(tar_file).unwrap();
-        let tar = XzDecoder::new(BufReader::new(tar_gz));
+        // Extract tar file directly to the final destination
+        let tar = XzDecoder::new(tar_file);
         let mut archive = Archive::new(tar);
-        archive.unpack(&temp_dir).unwrap();
+        archive
+            .unpack(context.data_dir.clone())
+            .pb_expect("Failed to extract Arch Linux FS .tar.xz file");
 
-        // Move extracted files to the final destination
-        fs::remove_dir_all(fs_root).unwrap_or(());
-        fs::rename(&temp_dir, fs_root).unwrap();
+        // Move the extracted files to the final destination
+        fs::rename(extracted_dir, fs_root)
+            .pb_expect("Failed to rename extracted files to final destination");
     }
 }
