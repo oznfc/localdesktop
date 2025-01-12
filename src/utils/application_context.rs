@@ -1,4 +1,4 @@
-use crate::logging::PolarBearExpectation;
+use crate::utils::logging::PolarBearExpectation;
 use egui_winit::winit::platform::android::activity::AndroidApp;
 use jni::{
     objects::{JObject, JString},

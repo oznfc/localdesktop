@@ -1,11 +1,8 @@
-use std::{
-    error::Error,
-    path::{Path, PathBuf},
-};
+use std::{error::Error, path::PathBuf};
 
 use wayland_server::{Client, Display, ListeningSocket};
 
-use crate::config;
+use crate::utils::config;
 
 pub struct PolarBearCompositor {}
 

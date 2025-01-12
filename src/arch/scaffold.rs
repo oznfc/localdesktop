@@ -1,6 +1,8 @@
-use crate::application_context::get_application_context;
-use crate::config;
-use crate::logging::{log_to_panel, PolarBearExpectation};
+use crate::utils::{
+    application_context::get_application_context,
+    config,
+    logging::{log_to_panel, PolarBearExpectation},
+};
 use egui_winit::winit::platform::android::activity::AndroidApp;
 use std::collections::VecDeque;
 use std::fs;

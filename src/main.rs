@@ -1,5 +1,5 @@
 use eframe::NativeOptions;
-use polar_bear::PolarBearApp;
+use polar_bear::app::eframe::PolarBearApp;
 
 fn main() -> Result<(), eframe::Error> {
     let mut options = NativeOptions::default();

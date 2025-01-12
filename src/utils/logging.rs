@@ -1,6 +1,5 @@
+use crate::utils::config;
 use std::{collections::VecDeque, sync::Mutex};
-
-use crate::config;
 
 pub fn log_to_panel(content: &str, log_panel: &Mutex<VecDeque<String>>) {
     let mut logs = log_panel.lock().unwrap();
