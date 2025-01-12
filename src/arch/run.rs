@@ -91,7 +91,7 @@ mod tests {
     use std::sync::Mutex;
 
     #[test]
-    fn test_output() {
+    fn should_echoable() {
         let command = &["echo", "hello"];
         let child = arch_run(command);
         let output = child.wait_with_output().expect("Failed to read output");
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn test_output_uname() {
+    fn should_output_uname() {
         let command = &["uname", "-a"];
         let child = arch_run(command);
         let output = child.wait_with_output().expect("Failed to read output");
@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn test_arch_run_with_log() {
+    fn should_run_with_log_successfully() {
         let command = &["echo", "hello"];
         let logs = Mutex::new(VecDeque::new());
         arch_run_with_log(command, &logs);
@@ -119,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn test_exit_code_success() {
+    fn should_exit_with_success_code() {
         let command = &["pacman", "-Ss", "chrome"];
         let mut child = arch_run(command);
         let status = child.wait().expect("Failed to wait for child");
@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn test_exit_code_fail() {
+    fn should_exit_with_fail_code() {
         let command = &["pacman", "-Qg", "plasmma"]; // notice the typo
         let mut child = arch_run(command);
         let status = child.wait().expect("Failed to wait for child");
