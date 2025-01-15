@@ -1,7 +1,7 @@
-use crate::utils::logging::{log_to_panel, PolarBearExpectation};
+use crate::utils::logging::PolarBearExpectation;
 use std::io::BufRead;
+use std::io::BufReader;
 use std::process::{Child, Command, Stdio};
-use std::{collections::VecDeque, io::BufReader, sync::Mutex};
 
 #[cfg(target_os = "android")]
 use crate::utils::{application_context::get_application_context, config};
@@ -75,12 +75,12 @@ pub fn arch_run(command: &[&str]) -> Child {
     return macos_arch_run(command);
 }
 
-pub fn arch_run_with_log(command: &[&str], logs: &Mutex<VecDeque<String>>) {
+pub fn arch_run_with_log<T: FnMut(String)>(command: &[&str], mut log: T) {
     let child = arch_run(command);
     let reader = BufReader::new(child.stdout.pb_expect("Failed to read stdout"));
     for line in reader.lines() {
-        let line = line.unwrap();
-        log_to_panel(&line, logs);
+        let line = line.pb_expect("Failed to read line");
+        log(line);
     }
 }
 
@@ -88,7 +88,6 @@ pub fn arch_run_with_log(command: &[&str], logs: &Mutex<VecDeque<String>>) {
 mod tests {
     use super::*;
     use std::collections::VecDeque;
-    use std::sync::Mutex;
 
     #[test]
     fn should_echoable() {
@@ -112,9 +111,10 @@ mod tests {
     #[test]
     fn should_run_with_log_successfully() {
         let command = &["echo", "hello"];
-        let logs = Mutex::new(VecDeque::new());
-        arch_run_with_log(command, &logs);
-        let logs = logs.lock().unwrap();
+        let mut logs = VecDeque::new();
+        arch_run_with_log(command, |log| {
+            logs.push_back(log.to_string());
+        });
         assert!(logs.iter().any(|log| log.contains("hello")));
     }
 

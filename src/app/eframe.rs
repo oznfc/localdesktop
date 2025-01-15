@@ -2,7 +2,7 @@ use crate::{
     arch::run::{arch_run, arch_run_with_log},
     utils::{
         config,
-        logging::{log_format, log_to_panel, PolarBearExpectation},
+        logging::{log_format, PolarBearExpectation},
     },
     wayland::compositor::PolarBearCompositor,
 };
@@ -14,9 +14,27 @@ use std::{
     thread,
 };
 
+pub struct Shared {
+    compositor: Option<PolarBearCompositor>,
+    ctx: Option<egui::Context>,
+    logs: VecDeque<String>,
+}
+
+impl Shared {
+    pub fn log(&mut self, content: String) {
+        self.logs.push_back(content);
+        // Ensure the logs size stays at most 20
+        if self.logs.len() > config::MAX_PANEL_LOG_ENTRIES {
+            self.logs.pop_front();
+        }
+        if let Some(ctx) = &self.ctx {
+            ctx.request_repaint();
+        }
+    }
+}
+
 pub struct PolarBearApp {
-    logs: Arc<Mutex<VecDeque<String>>>,
-    compositor: Arc<Mutex<Option<PolarBearCompositor>>>,
+    shared: Arc<Mutex<Shared>>,
 }
 
 #[cfg(target_os = "android")]
@@ -24,7 +42,6 @@ use crate::{arch::scaffold, utils::application_context::ApplicationContext};
 
 impl PolarBearApp {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
-        let logs = Arc::new(Mutex::new(VecDeque::new()));
         #[cfg(target_os = "android")]
         let cloned_android_app = options
             .android_app
@@ -33,19 +50,28 @@ impl PolarBearApp {
         #[cfg(target_os = "android")]
         ApplicationContext::build(&cloned_android_app);
 
-        let compositor = Arc::new(Mutex::new(None));
-        let app: PolarBearApp = PolarBearApp {
-            logs: Arc::clone(&logs),
-            compositor: Arc::clone(&compositor),
+        let shared = Arc::new(Mutex::new(Shared {
+            compositor: None,
+            ctx: None,
+            logs: VecDeque::new(),
+        }));
+
+        let app = PolarBearApp {
+            shared: Arc::clone(&shared),
         };
+
         thread::spawn(move || {
-            let result = panic::catch_unwind(|| {
+            let result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let log = |it| {
+                    shared.lock().unwrap().log(it);
+                };
+
                 // Step 1. Setup Arch FS if not already installed
                 #[cfg(target_os = "android")]
-                scaffold::scaffold(&cloned_android_app, &logs);
+                scaffold::scaffold(&cloned_android_app, log);
 
                 // Step 2. Install dependencies if not already installed
-                arch_run_with_log(&["uname", "-a"], &logs);
+                arch_run_with_log(&["uname", "-a"], log);
                 loop {
                     let installed = arch_run(&["pacman", "-Qg", "plasma"])
                         .wait()
@@ -53,40 +79,35 @@ impl PolarBearApp {
                         .success();
                     if installed {
                         match PolarBearCompositor::build() {
-                            Ok(c) => {
-                                let mut comp =
-                                    compositor.lock().pb_expect("Failed to lock compositor");
-                                *comp = Some(c);
+                            Ok(compositor) => {
+                                {
+                                    shared.lock().unwrap().compositor.replace(compositor);
+                                }
 
-                                log_to_panel(
-                                    &log_format(
-                                        "POLAR BEAR COMPOSITOR STARTED",
-                                        "Polar Bear Compositor started successfully",
-                                    ),
-                                    &logs,
-                                );
+                                log(log_format(
+                                    "POLAR BEAR COMPOSITOR STARTED",
+                                    "Polar Bear Compositor started successfully",
+                                ));
 
-                                arch_run_with_log(
-                                    &[
-                                        "sh",
-                                        "-c",
-                                        &format!(
-                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston",
-                                            config::XDG_RUNTIME_DIR,
-                                            config::WAYLAND_SOCKET_NAME
-                                        ),
-                                    ],
-                                    &logs,
-                                );
+                                // arch_run_with_log(
+                                //     &[
+                                //         "sh",
+                                //         "-c",
+                                //         &format!(
+                                //             "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston",
+                                //             config::XDG_RUNTIME_DIR,
+                                //             config::WAYLAND_SOCKET_NAME
+                                //         ),
+                                //     ],
+                                //     log,
+                                // );
+                                arch_run_with_log(&["ping", "8.8.8.8"], log);
                             }
                             Err(e) => {
-                                log_to_panel(
-                                    &log_format(
-                                        "POLAR BEAR COMPOSITOR RUNTIME ERROR",
-                                        &format!("{}", e),
-                                    ),
-                                    &logs,
-                                );
+                                log(log_format(
+                                    "POLAR BEAR COMPOSITOR RUNTIME ERROR",
+                                    &format!("{}", e),
+                                ));
                             }
                         }
                         break;
@@ -94,11 +115,11 @@ impl PolarBearApp {
                         arch_run(&["rm", "/var/lib/pacman/db.lck"]);
                         arch_run_with_log(
                             &["pacman", "-Syu", "plasma", "weston", "--noconfirm"],
-                            &logs,
+                            log,
                         );
                     }
                 }
-            });
+            }));
             if let Err(e) = result {
                 let error_msg = e
                     .downcast_ref::<&str>()
@@ -106,7 +127,10 @@ impl PolarBearApp {
                     .or_else(|| e.downcast_ref::<String>().map(|s| s.as_str()))
                     .unwrap_or("Unknown error");
 
-                log_to_panel(error_msg, &logs);
+                shared.lock().unwrap().log(log_format(
+                    "POLAR BEAR COMPOSITOR RUNTIME ERROR",
+                    &format!("{}", error_msg),
+                ));
             }
         });
         eframe::run_native("Polar Bear", options, Box::new(|_cc| Ok(Box::new(app))))
@@ -126,9 +150,18 @@ impl eframe::App for PolarBearApp {
                 egui::ScrollArea::vertical()
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
-                        let logs = self.logs.lock().pb_expect("Failed to lock logs");
-                        ui.label(logs.iter().cloned().collect::<Vec<_>>().join("\n"))
+                        ui.label(
+                            self.shared
+                                .lock()
+                                .unwrap()
+                                .logs
+                                .iter()
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                        )
                     });
             });
+        self.shared.lock().unwrap().ctx = Some(ctx.clone());
     }
 }

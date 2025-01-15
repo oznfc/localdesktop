@@ -1,16 +1,12 @@
 use crate::utils::{
-    application_context::get_application_context,
-    config,
-    logging::{log_to_panel, PolarBearExpectation},
+    application_context::get_application_context, config, logging::PolarBearExpectation,
 };
 use egui_winit::winit::platform::android::activity::AndroidApp;
-use std::collections::VecDeque;
 use std::fs;
-use std::sync::{Arc, Mutex};
 use tar::Archive;
 use xz2::read::XzDecoder;
 
-pub fn scaffold(android_app: &AndroidApp, logs: &Arc<Mutex<VecDeque<String>>>) {
+pub fn scaffold<T: FnMut(String)>(android_app: &AndroidApp, mut log: T) {
     let context = get_application_context().pb_expect("Failed to get application context");
     println!("Application context: {:?}", context);
     let fs_root = std::path::Path::new(config::ARCH_FS_ROOT);
@@ -31,11 +27,11 @@ pub fn scaffold(android_app: &AndroidApp, logs: &Arc<Mutex<VecDeque<String>>>) {
             .is_none()
     {
         should_pacstrap = true;
-        log_to_panel("Arch Linux is not installed! Installing...", logs);
+        log("Arch Linux is not installed! Installing...".to_string());
     }
 
     if should_pacstrap {
-        log_to_panel("(This may take a few minutes.)", logs);
+        log("(This may take a few minutes.)".to_string());
 
         // Ensure the extracted directory is clean
         let extracted_dir = &context.data_dir.join("archlinux-aarch64");
