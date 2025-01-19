@@ -1,10 +1,10 @@
 use crate::{
+    app::{compositor::PolarBearCompositor, renderer::PolarBearRenderer},
     arch::run::{arch_run, arch_run_with_log},
     utils::{
         config,
         logging::{log_format, PolarBearExpectation},
     },
-    wayland::compositor::PolarBearCompositor,
 };
 use eframe::{egui, NativeOptions};
 use std::{
@@ -16,6 +16,7 @@ use std::{
 
 pub struct Shared {
     compositor: Option<PolarBearCompositor>,
+    renderer: Option<PolarBearRenderer>,
     ctx: Option<egui::Context>,
     logs: VecDeque<String>,
 }
@@ -52,6 +53,7 @@ impl PolarBearApp {
 
         let shared = Arc::new(Mutex::new(Shared {
             compositor: None,
+            renderer: None,
             ctx: None,
             logs: VecDeque::new(),
         }));
@@ -162,6 +164,15 @@ impl eframe::App for PolarBearApp {
                         )
                     });
             });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Polar Bear");
+            ui.input(|input| {
+                let renderer = PolarBearRenderer {
+                    painter: ui.painter().clone(),
+                };
+                self.shared.lock().unwrap().renderer.replace(renderer);
+            });
+        });
         self.shared.lock().unwrap().ctx = Some(ctx.clone());
     }
 }

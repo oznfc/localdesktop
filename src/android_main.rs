@@ -1,4 +1,4 @@
-use crate::app::eframe::PolarBearApp;
+use crate::app::ui::PolarBearApp;
 use eframe::{NativeOptions, Renderer};
 use egui_winit::winit::platform::android::activity::AndroidApp;
 

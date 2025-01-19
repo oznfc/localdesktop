@@ -1,5 +1,7 @@
 pub mod app {
-    pub mod eframe;
+    pub mod compositor;
+    pub mod renderer;
+    pub mod ui;
 }
 pub mod arch {
     pub mod run;
@@ -7,12 +9,10 @@ pub mod arch {
     #[cfg(target_os = "android")]
     pub mod scaffold;
 }
-pub mod wayland {
-    pub mod compositor;
-}
 pub mod utils {
     pub mod config;
     pub mod logging;
+    pub mod wayland;
 
     #[cfg(target_os = "android")]
     pub mod application_context;
