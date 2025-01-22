@@ -1,5 +1,11 @@
 {
   "cSpell.words": ["eframe", "egui", "Wgpu", "winit", "xbuild"],
   "rust-analyzer.cargo.target": "aarch64-linux-android",
-  "rust-analyzer.cargo.allTargets": true
+  "rust-analyzer.cargo.allTargets": true,
+  "rust-analyzer.cargo.extraEnv": {
+    "RUSTFLAGS": "-L/opt/homebrew/lib"
+  },
+  "rust-analyzer.runnables.extraEnv": {
+    "RUSTFLAGS": "-L/opt/homebrew/lib"
+  }
 }
