@@ -16,7 +16,6 @@ use std::{
 
 pub struct Shared {
     compositor: Option<PolarBearCompositor>,
-    renderer: Option<PolarBearRenderer>,
     ctx: Option<egui::Context>,
     logs: VecDeque<String>,
 }
@@ -53,7 +52,6 @@ impl PolarBearApp {
 
         let shared = Arc::new(Mutex::new(Shared {
             compositor: None,
-            renderer: None,
             ctx: None,
             logs: VecDeque::new(),
         }));
@@ -91,19 +89,18 @@ impl PolarBearApp {
                                     "Polar Bear Compositor started successfully",
                                 ));
 
-                                // arch_run_with_log(
-                                //     &[
-                                //         "sh",
-                                //         "-c",
-                                //         &format!(
-                                //             "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston",
-                                //             config::XDG_RUNTIME_DIR,
-                                //             config::WAYLAND_SOCKET_NAME
-                                //         ),
-                                //     ],
-                                //     log,
-                                // );
-                                arch_run_with_log(&["ping", "8.8.8.8"], log);
+                                arch_run_with_log(
+                                    &[
+                                        "sh",
+                                        "-c",
+                                        &format!(
+                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston",
+                                            config::XDG_RUNTIME_DIR,
+                                            config::WAYLAND_SOCKET_NAME
+                                        ),
+                                    ],
+                                    log,
+                                );
                             }
                             Err(e) => {
                                 log(log_format(
@@ -166,11 +163,21 @@ impl eframe::App for PolarBearApp {
             });
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Polar Bear");
-            ui.input(|input| {
+            ui.input(|_input| {
                 let renderer = PolarBearRenderer {
                     painter: ui.painter().clone(),
                 };
-                self.shared.lock().unwrap().renderer.replace(renderer);
+                if let Some(compositor) = self.shared.lock().unwrap().compositor.as_mut() {
+                    match compositor.draw(renderer, ui.available_size()) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            self.shared.lock().unwrap().log(log_format(
+                                "POLAR BEAR COMPOSITOR DRAW ERROR",
+                                &format!("{}", e),
+                            ));
+                        }
+                    }
+                };
             });
         });
         self.shared.lock().unwrap().ctx = Some(ctx.clone());

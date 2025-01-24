@@ -5,7 +5,7 @@ use std::{
     time::Instant, // Added import
 };
 
-use eframe::{egui::Painter, glow};
+use eframe::egui::Vec2;
 use smithay::{
     backend::{
         input::KeyState,
@@ -15,7 +15,7 @@ use smithay::{
                 Kind,
             },
             utils::{draw_render_elements, on_commit_buffer_handler},
-            Color32F, Renderer,
+            Color32F, Frame, Renderer,
         },
     },
     delegate_compositor, delegate_data_device, delegate_seat, delegate_shm, delegate_xdg_shell,
@@ -28,7 +28,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{protocol::wl_seat, Display},
     },
-    utils::{Physical, Rectangle, Serial, Size, Transform},
+    utils::{Rectangle, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -237,7 +237,7 @@ impl PolarBearCompositor {
         })
     }
 
-    fn keyboard_input_handler(self, keycode: u32, key_state: KeyState) {
+    pub fn keyboard_input_handler(self, keycode: u32, key_state: KeyState) {
         let mut state = self.state;
         self.keyboard.input::<(), _>(
             &mut state,
@@ -252,7 +252,7 @@ impl PolarBearCompositor {
         );
     }
 
-    fn pointer_motion_absolute_handler(self) {
+    pub fn pointer_motion_absolute_handler(self) {
         if let Some(surface) = self
             .state
             .xdg_shell_state
@@ -267,11 +267,13 @@ impl PolarBearCompositor {
         };
     }
 
-    fn draw(
-        mut self,
+    pub fn draw(
+        &mut self,
         mut renderer: PolarBearRenderer,
-        size: Size<i32, Physical>,
-    ) -> Result<Rectangle<i32, Physical>, Box<dyn Error>> {
+        size: Vec2,
+    ) -> Result<(), Box<dyn Error>> {
+        let size = Size::from((size.x as i32, size.y as i32));
+
         let damage = Rectangle::from_size(size);
 
         let elements = self
@@ -316,8 +318,8 @@ impl PolarBearCompositor {
             self.clients.lock().unwrap().push(client);
         }
 
-        let mut state = self.state;
-        self.display.dispatch_clients(&mut state)?;
+        let state = &mut self.state;
+        self.display.dispatch_clients(state)?;
         self.display.flush_clients()?;
 
         // let mut damage = match damage {
@@ -342,6 +344,6 @@ impl PolarBearCompositor {
         // // Request frame callback.
         // self.window.pre_present_notify();
         // self.egl_surface.swap_buffers(damage.as_deref_mut())?;
-        Ok(damage)
+        Ok(())
     }
 }
