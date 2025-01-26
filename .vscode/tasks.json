@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "[Android] Run on simulator",
+      "command": "sh",
+      "args": [
+        "-c",
+        "~/.cargo/bin/x run --device $(~/.cargo/bin/x devices | grep \"android arm64\" | head -n 1 | awk \"{print \\$1}\")"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}
