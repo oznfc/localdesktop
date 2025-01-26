@@ -1,12 +1,15 @@
 use crate::{
+    app::{compositor::PolarBearCompositor, renderer::PolarBearRenderer},
     arch::run::{arch_run, arch_run_with_log},
     utils::{
         config,
         logging::{log_format, PolarBearExpectation},
     },
-    wayland::compositor::PolarBearCompositor,
 };
-use eframe::{egui, NativeOptions};
+use eframe::{
+    egui::{self, Rect},
+    NativeOptions,
+};
 use std::{
     collections::VecDeque,
     panic,
@@ -89,19 +92,18 @@ impl PolarBearApp {
                                     "Polar Bear Compositor started successfully",
                                 ));
 
-                                // arch_run_with_log(
-                                //     &[
-                                //         "sh",
-                                //         "-c",
-                                //         &format!(
-                                //             "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston",
-                                //             config::XDG_RUNTIME_DIR,
-                                //             config::WAYLAND_SOCKET_NAME
-                                //         ),
-                                //     ],
-                                //     log,
-                                // );
-                                arch_run_with_log(&["ping", "8.8.8.8"], log);
+                                arch_run_with_log(
+                                    &[
+                                        "sh",
+                                        "-c",
+                                        &format!(
+                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston",
+                                            config::XDG_RUNTIME_DIR,
+                                            config::WAYLAND_SOCKET_NAME
+                                        ),
+                                    ],
+                                    log,
+                                );
                             }
                             Err(e) => {
                                 log(log_format(
@@ -162,6 +164,22 @@ impl eframe::App for PolarBearApp {
                         )
                     });
             });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let renderer = PolarBearRenderer {
+                painter: ui.painter().clone(),
+            };
+            if let Some(compositor) = self.shared.lock().unwrap().compositor.as_mut() {
+                match compositor.draw(renderer, ui.available_size()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.shared.lock().unwrap().log(log_format(
+                            "POLAR BEAR COMPOSITOR DRAW ERROR",
+                            &format!("{}", e),
+                        ));
+                    }
+                }
+            };
+        });
         self.shared.lock().unwrap().ctx = Some(ctx.clone());
     }
 }
