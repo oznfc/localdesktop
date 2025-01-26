@@ -6,7 +6,10 @@ use crate::{
         logging::{log_format, PolarBearExpectation},
     },
 };
-use eframe::{egui, NativeOptions};
+use eframe::{
+    egui::{self, Rect},
+    NativeOptions,
+};
 use std::{
     collections::VecDeque,
     panic,
@@ -162,23 +165,20 @@ impl eframe::App for PolarBearApp {
                     });
             });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Polar Bear");
-            ui.input(|_input| {
-                let renderer = PolarBearRenderer {
-                    painter: ui.painter().clone(),
-                };
-                if let Some(compositor) = self.shared.lock().unwrap().compositor.as_mut() {
-                    match compositor.draw(renderer, ui.available_size()) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            self.shared.lock().unwrap().log(log_format(
-                                "POLAR BEAR COMPOSITOR DRAW ERROR",
-                                &format!("{}", e),
-                            ));
-                        }
+            let renderer = PolarBearRenderer {
+                painter: ui.painter().clone(),
+            };
+            if let Some(compositor) = self.shared.lock().unwrap().compositor.as_mut() {
+                match compositor.draw(renderer, ui.available_size()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.shared.lock().unwrap().log(log_format(
+                            "POLAR BEAR COMPOSITOR DRAW ERROR",
+                            &format!("{}", e),
+                        ));
                     }
-                };
-            });
+                }
+            };
         });
         self.shared.lock().unwrap().ctx = Some(ctx.clone());
     }
