@@ -7,7 +7,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "~/.cargo/bin/x run --device $(~/.cargo/bin/x devices | grep \"android arm64\" | head -n 1 | awk \"{print \\$1}\")"
+        "~/.cargo/bin/x run --debug --device $(~/.cargo/bin/x devices | grep \"android arm64\" | head -n 1 | awk \"{print \\$1}\")"
       ],
       "group": {
         "kind": "build",

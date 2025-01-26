@@ -5,6 +5,7 @@ use std::fmt::{Debug, Display};
 use eframe::egui::{
     Color32 as EguiColor, ColorImage, Painter, Pos2, Rect as EguiRect, TextureOptions,
 };
+use smithay::backend::allocator::format::has_alpha;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::{
     sync::SyncPoint, DebugFlags, ImportDma, ImportDmaWl, ImportMem, ImportMemWl, Renderer,
@@ -12,6 +13,7 @@ use smithay::backend::renderer::{
 };
 use smithay::backend::renderer::{Color32F, Frame, Texture};
 use smithay::utils::{Buffer, Physical, Rectangle, Size, Transform};
+use smithay::wayland::shm::{shm_format_to_fourcc, with_buffer_contents, BufferAccessError};
 
 pub struct PolarBearRenderer {
     pub painter: Painter,
@@ -30,7 +32,25 @@ impl ImportMemWl for PolarBearRenderer {
         surface: Option<&smithay::wayland::compositor::SurfaceData>,
         damage: &[Rectangle<i32, Buffer>],
     ) -> Result<<Self as Renderer>::TextureId, <Self as Renderer>::Error> {
-        todo!("Investigate the difference between ImportMemWl and ImportMem");
+        with_buffer_contents(buffer, |ptr, len, data| {
+            let offset = data.offset;
+            let width = data.width;
+            let height = data.height;
+            let stride = data.stride;
+            let fourcc = shm_format_to_fourcc(data.format);
+
+            let color_image =
+                ColorImage::from_rgba_unmultiplied([width as usize, height as usize], unsafe {
+                    std::slice::from_raw_parts(ptr.add(offset as usize), len - offset as usize)
+                });
+
+            let texture =
+                self.painter
+                    .ctx()
+                    .load_texture("", color_image, TextureOptions::default());
+            Ok(PolarBearTexture(RefCell::new(texture)))
+        })
+        .map_err(|e| PolarBearRenderError(format!("{}", e)))?
     }
 }
 
@@ -180,7 +200,7 @@ impl Frame for PolarBearFrame<'_> {
     type TextureId = PolarBearTexture;
 
     fn id(&self) -> usize {
-        todo!("Investigate what id is needed for");
+        usize::MAX
     }
 
     /// Clear the complete current target with a single given color.
@@ -328,7 +348,7 @@ impl Renderer for PolarBearRenderer {
     /// Returns an id, that is unique to all renderers, that can use
     /// `TextureId`s originating from any of these renderers.
     fn id(&self) -> usize {
-        todo!("Investigate what id is needed for");
+        usize::MAX
     }
 
     /// Set the filter method to be used when rendering a texture into a smaller area than its size

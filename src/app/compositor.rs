@@ -1,20 +1,48 @@
 use std::{
     error::Error,
+    os::unix::io::OwnedFd,
     sync::{Arc, Mutex},
     time::Instant, // Added import
 };
 
 use eframe::egui::Vec2;
 use smithay::{
-    backend::renderer::{utils::on_commit_buffer_handler, Color32F, Frame, Renderer},
-    delegate_compositor, delegate_shm,
-    reexports::wayland_server::Display,
-    utils::{Rectangle, Size, Transform},
+    backend::{
+        input::KeyState,
+        renderer::{
+            element::{
+                surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+                Kind,
+            },
+            utils::{draw_render_elements, on_commit_buffer_handler},
+            Color32F, Frame, Renderer,
+        },
+    },
+    delegate_compositor, delegate_data_device, delegate_seat, delegate_shm, delegate_xdg_shell,
+    input::{
+        self,
+        keyboard::{FilterResult, KeyboardHandle},
+        Seat, SeatHandler, SeatState,
+    },
+    reexports::{
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
+        wayland_server::{protocol::wl_seat, Display},
+    },
+    utils::{Rectangle, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
             with_surface_tree_downward, CompositorClientState, CompositorHandler, CompositorState,
             SurfaceAttributes, TraversalAction,
+        },
+        selection::{
+            data_device::{
+                ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
+            },
+            SelectionHandler,
+        },
+        shell::xdg::{
+            PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
         },
         shm::{ShmHandler, ShmState},
     },
@@ -38,16 +66,65 @@ pub struct PolarBearCompositor {
     listener: ListeningSocket,
     clients: Arc<Mutex<Vec<Client>>>,
     start_time: Instant,
+    seat: Seat<State>,
+    keyboard: KeyboardHandle<State>,
 }
 
 struct State {
     compositor_state: CompositorState,
+    xdg_shell_state: XdgShellState,
     shm_state: ShmState,
-    // xdg_shell_state: XdgShellState,
+    data_device_state: DataDeviceState,
+    seat_state: SeatState<Self>,
 }
 
 impl BufferHandler for State {
     fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
+}
+
+impl XdgShellHandler for State {
+    fn xdg_shell_state(&mut self) -> &mut XdgShellState {
+        &mut self.xdg_shell_state
+    }
+
+    fn new_toplevel(&mut self, surface: ToplevelSurface) {
+        surface.with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::Activated);
+        });
+        surface.send_configure();
+    }
+
+    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
+        // Handle popup creation here
+    }
+
+    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        // Handle popup grab here
+    }
+
+    fn reposition_request(
+        &mut self,
+        _surface: PopupSurface,
+        _positioner: PositionerState,
+        _token: u32,
+    ) {
+        // Handle popup reposition here
+    }
+}
+
+impl SelectionHandler for State {
+    type SelectionUserData = ();
+}
+
+impl DataDeviceHandler for State {
+    fn data_device_state(&self) -> &DataDeviceState {
+        &self.data_device_state
+    }
+}
+
+impl ClientDndGrabHandler for State {}
+impl ServerDndGrabHandler for State {
+    fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: Seat<Self>) {}
 }
 
 impl CompositorHandler for State {
@@ -68,6 +145,19 @@ impl ShmHandler for State {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
+}
+
+impl SeatHandler for State {
+    type KeyboardFocus = WlSurface;
+    type PointerFocus = WlSurface;
+    type TouchFocus = WlSurface;
+
+    fn seat_state(&mut self) -> &mut SeatState<Self> {
+        &mut self.seat_state
+    }
+
+    fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
+    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: input::pointer::CursorImageStatus) {}
 }
 
 pub fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
@@ -107,23 +197,33 @@ impl ClientData for ClientState {
 }
 
 // Macros used to delegate protocol handling to types in the app state.
+delegate_xdg_shell!(State);
 delegate_compositor!(State);
 delegate_shm!(State);
+delegate_seat!(State);
+delegate_data_device!(State);
 
 impl PolarBearCompositor {
     pub fn build() -> Result<PolarBearCompositor, Box<dyn Error>> {
         let display = Display::new()?;
         let dh = display.handle();
 
+        let mut seat_state = SeatState::new();
+        let mut seat = seat_state.new_wl_seat(&dh, "Polar Bear");
+
         let listener = bind_socket()?;
         let clients = Arc::new(Mutex::new(Vec::new()));
 
         let start_time = Instant::now();
 
+        let keyboard = seat.add_keyboard(Default::default(), 200, 200).unwrap();
+
         let state = State {
             compositor_state: CompositorState::new::<State>(&dh),
-            // xdg_shell_state: XdgShellState::new::<State>(&dh),
+            xdg_shell_state: XdgShellState::new::<State>(&dh),
             shm_state: ShmState::new::<State>(&dh, vec![]),
+            data_device_state: DataDeviceState::new::<State>(&dh),
+            seat_state,
         };
 
         Ok(PolarBearCompositor {
@@ -132,7 +232,39 @@ impl PolarBearCompositor {
             clients,
             start_time,
             display,
+            seat,
+            keyboard,
         })
+    }
+
+    pub fn keyboard_input_handler(self, keycode: u32, key_state: KeyState) {
+        let mut state = self.state;
+        self.keyboard.input::<(), _>(
+            &mut state,
+            keycode.into(),
+            key_state,
+            0.into(),
+            0,
+            |_, _, _| {
+                //
+                FilterResult::Forward
+            },
+        );
+    }
+
+    pub fn pointer_motion_absolute_handler(self) {
+        if let Some(surface) = self
+            .state
+            .xdg_shell_state
+            .toplevel_surfaces()
+            .iter()
+            .next()
+            .cloned()
+        {
+            let surface = surface.wl_surface().clone();
+            let mut state = self.state;
+            self.keyboard.set_focus(&mut state, Some(surface), 0.into());
+        };
     }
 
     pub fn draw(
@@ -144,36 +276,36 @@ impl PolarBearCompositor {
 
         let damage = Rectangle::from_size(size);
 
-        // let elements = self
-        //     .state
-        //     .xdg_shell_state
-        //     .toplevel_surfaces()
-        //     .iter()
-        //     .flat_map(|surface| {
-        //         render_elements_from_surface_tree(
-        //             &mut renderer,
-        //             surface.wl_surface(),
-        //             (0, 0),
-        //             1.0,
-        //             1.0,
-        //             Kind::Unspecified,
-        //         )
-        //     })
-        //     .collect::<Vec<WaylandSurfaceRenderElement<PolarBearRenderer>>>();
+        let elements = self
+            .state
+            .xdg_shell_state
+            .toplevel_surfaces()
+            .iter()
+            .flat_map(|surface| {
+                render_elements_from_surface_tree(
+                    &mut renderer,
+                    surface.wl_surface(),
+                    (0, 0),
+                    1.0,
+                    1.0,
+                    Kind::Unspecified,
+                )
+            })
+            .collect::<Vec<WaylandSurfaceRenderElement<PolarBearRenderer>>>();
 
         let mut frame = renderer.render(size, Transform::Flipped180).unwrap();
         frame
             .clear(Color32F::new(0.1, 0.0, 0.0, 1.0), &[damage])
             .unwrap();
-        // draw_render_elements(&mut frame, 1.0, &elements, &[damage]).unwrap();
+        draw_render_elements(&mut frame, 1.0, &elements, &[damage]).unwrap();
         let _ = frame.finish().unwrap();
 
-        // for surface in self.state.xdg_shell_state.toplevel_surfaces() {
-        //     send_frames_surface_tree(
-        //         surface.wl_surface(),
-        //         self.start_time.elapsed().as_millis() as u32,
-        //     );
-        // }
+        for surface in self.state.xdg_shell_state.toplevel_surfaces() {
+            send_frames_surface_tree(
+                surface.wl_surface(),
+                self.start_time.elapsed().as_millis() as u32,
+            );
+        }
 
         if let Some(stream) = self.listener.accept()? {
             println!("Got a client: {:?}", stream);
