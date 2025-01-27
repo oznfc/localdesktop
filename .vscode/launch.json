@@ -5,35 +5,28 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "type": "lldb",
       "request": "launch",
-      "name": "[MacOS] Debug unit tests",
-      "cargo": {
-        "args": ["test", "--no-run", "--lib", "--package=polar-bear"],
-        "filter": {
-          "name": "polar_bear",
-          "kind": "lib"
-        },
-        "env": {
-          "RUSTFLAGS": "-L/opt/homebrew/lib"
-        }
-      },
-      "args": [],
-      "cwd": "${workspaceFolder}"
+      // CodeLLDB v1.11.2 has a bug when launching (https://github.com/vadimcn/codelldb/issues/1220).
+      // Downgrade to v1.11.1 via Extensions tab > CodeLLDB > Install Specific Version... > v1.11.1.
+      "type": "android-debug",
+      "name": "[Android] Debug",
+      "preLaunchTask": "[Android] Build",
+      "target": "select",
+      "mode": "native",
+      "apkPath": "${workspaceFolder}/target/x/debug/android/polar-bear.apk",
+      "launchActivity": "android.app.NativeActivity"
     },
     {
-      "type": "lldb",
-      "request": "launch",
-      "name": "[Linux] Debug executable",
-      "cargo": {
-        "args": ["build", "--bin=polar-bear", "--package=polar-bear"],
-        "filter": {
-          "name": "polar-bear",
-          "kind": "bin"
-        }
-      },
-      "args": [],
-      "cwd": "${workspaceFolder}"
+      "request": "attach",
+      // Use CodeLLDB v1.11.1 to avoid the bug mentioned above.
+      "type": "android-debug",
+      // Allows viewing logs (e.g., from `println!`) by attaching to the process started by xbuild (shortcut `Ctrl+Shift+B`).
+      // Future improvement: view logs when using the launch request above.
+      "name": "[Android] Attach",
+      "target": "select",
+      "pid": "${command:pickAndroidProcess}",
+      "mode": "native",
+      "packageName": "app.polarbear"
     }
   ]
 }
