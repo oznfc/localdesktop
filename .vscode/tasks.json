@@ -3,7 +3,17 @@
   "tasks": [
     {
       "type": "shell",
-      "label": "[Android] Run on simulator",
+      "label": "[Android] Build",
+      "command": "~/.cargo/bin/x",
+      "args": ["build", "--platform=android", "--arch=arm64"],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "type": "shell",
+      "label": "[Android] Run",
       "command": "sh",
       "args": [
         "-c",
@@ -12,7 +22,8 @@
       "group": {
         "kind": "build",
         "isDefault": true
-      }
+      },
+      "isBackground": true
     }
   ]
 }
