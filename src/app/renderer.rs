@@ -241,7 +241,6 @@ impl Frame for PolarBearFrame<'_> {
         );
         Ok(())
     }
-
     fn render_texture_from_to(
         &mut self,
         texture: &Self::TextureId,
@@ -252,26 +251,34 @@ impl Frame for PolarBearFrame<'_> {
         src_transform: Transform,
         alpha: f32,
     ) -> Result<(), Self::Error> {
-        // Convert source rectangle to UV coordinates
+        // Get texture size for UV normalization
+        let texture_size = self.painter.ctx().available_rect();
+        let texture_width = texture_size.width();
+        let texture_height = texture_size.height();
+
+        // Convert source rectangle to normalized UV coordinates
         let mut src_min = Pos2 {
-            x: src.loc.x as f32,
-            y: src.loc.y as f32,
+            x: (src.loc.x as f32) / texture_width,
+            y: (src.loc.y as f32) / texture_height,
         };
         let mut src_max = Pos2 {
-            x: src_min.x + src.size.w as f32,
-            y: src_min.y + src.size.h as f32,
+            x: (src_min.x + src.size.w as f32) / texture_width,
+            y: (src_min.y + src.size.h as f32) / texture_height,
         };
 
         // Apply transformations to UV coordinates
         match src_transform {
             Transform::Normal => {} // No-op
             Transform::Flipped180 => {
-                std::mem::swap(&mut src_min.x, &mut src_max.x);
+                src_min.x = 1.0 - src_min.x;
+                src_min.y = 1.0 - src_min.y;
+                src_max.x = 1.0 - src_max.x;
+                src_max.y = 1.0 - src_max.y;
             }
             Transform::Flipped => {
-                std::mem::swap(&mut src_min.y, &mut src_max.y);
+                src_min.y = 1.0 - src_min.y;
+                src_max.y = 1.0 - src_max.y;
             }
-            // Handle other transformations as needed...
             _ => unimplemented!("Other transforms are not implemented yet"),
         }
 
@@ -297,6 +304,20 @@ impl Frame for PolarBearFrame<'_> {
 
         // Convert alpha to tint color
         let tint = EguiColor::from_white_alpha((alpha * 255.0) as u8);
+
+        // Apply damage regions (if any)
+        // for region in damage {
+        //     self.painter.clip_rect(EguiRect {
+        //         min: Pos2 {
+        //             x: region.loc.x as f32,
+        //             y: region.loc.y as f32,
+        //         },
+        //         max: Pos2 {
+        //             x: (region.loc.x + region.size.w) as f32,
+        //             y: (region.loc.y + region.size.h) as f32,
+        //         },
+        //     });
+        // }
 
         // Perform rendering
         self.painter.image(texture.0.borrow().id(), rect, uv, tint);

@@ -7,12 +7,14 @@ use std::process::{Child, Command, Stdio};
 use crate::utils::{application_context::get_application_context, config};
 
 #[cfg(target_os = "android")]
-fn android_arch_run(command: &[&str]) -> Child {
+fn android_arch_run(command: &str) -> Child {
     // Run the command inside Proot
     let context = get_application_context().pb_expect("Failed to get application context");
     println!("Context inside android_arch_run: {:?}", context);
 
     Command::new(context.native_library_dir.join("proot.so"))
+        .env("PROOT_LOADER", context.native_library_dir.join("loader.so"))
+        .env("PROOT_TMP_DIR", context.data_dir.join("files/arch"))
         .arg("-r")
         .arg(config::ARCH_FS_ROOT)
         .arg("-L")
@@ -41,41 +43,39 @@ fn android_arch_run(command: &[&str]) -> Child {
         .arg("\"LANG=C.UTF-8\"")
         .arg("\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"")
         .arg("\"TMPDIR=/tmp\"")
-        .args(command)
-        .env("PROOT_LOADER", context.native_library_dir.join("loader.so"))
-        .env(
-            "PROOT_TMP_DIR",
-            context.data_dir.join("files/archlinux-aarch64"),
-        )
+        .arg("sh")
+        .arg("-c")
+        .arg(command)
         .stdout(Stdio::piped())
         .spawn()
         .pb_expect("Failed to run command")
 }
 
-#[cfg(target_os = "macos")]
-fn macos_arch_run(command: &[&str]) -> Child {
+#[cfg(all(unix, not(target_os = "android")))]
+fn unix_arch_run(command: &str) -> Child {
     // On MacOS, use orb to run the command
-    let mut orb_command = vec!["orb"];
-    orb_command.extend(command);
-
-    Command::new("orb")
-        .arg("-u")
-        .arg("root")
-        .args(command)
+    Command::new("sh")
+        .arg("-c")
+        .arg(command)
         .stdout(Stdio::piped())
         .spawn()
         .pb_expect("Failed to run command")
 }
 
-pub fn arch_run(command: &[&str]) -> Child {
+pub fn arch_run(command: &str) -> Child {
     #[cfg(target_os = "android")]
     return android_arch_run(command);
 
     #[cfg(target_os = "macos")]
-    return macos_arch_run(command);
+    panic!("Initially, to ease development, we use OrbStack to mimic PRoot behavior on MacOS. However, you cannot bind an UNIX socket from MacOS and connect to it from the OrbStack Linux machine, since UNIX sockets require kernel support. SHM may not work as well. Luckily, we found a way to debug Rust code running directly on Android, so MacOS specific code is not needed anymore.");
+
+    #[cfg(all(unix, not(target_os = "android")))]
+    return unix_arch_run(command); // On Unix, we can use the host directly.
+
+    panic!("Unsupported OS! Please run on Android/Unix.");
 }
 
-pub fn arch_run_with_log<T: FnMut(String)>(command: &[&str], mut log: T) {
+pub fn arch_run_with_log<T: FnMut(String)>(command: &str, mut log: T) {
     let child = arch_run(command);
     let reader = BufReader::new(child.stdout.pb_expect("Failed to read stdout"));
     for line in reader.lines() {
@@ -91,16 +91,14 @@ mod tests {
 
     #[test]
     fn should_echoable() {
-        let command = &["echo", "hello"];
-        let child = arch_run(command);
+        let child = arch_run("echo hello");
         let output = child.wait_with_output().expect("Failed to read output");
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "hello");
     }
 
     #[test]
     fn should_output_uname() {
-        let command = &["uname", "-a"];
-        let child = arch_run(command);
+        let child = arch_run("uname -a");
         let output = child.wait_with_output().expect("Failed to read output");
         println!("Output: {}", String::from_utf8_lossy(&output.stdout));
         assert!(String::from_utf8_lossy(&output.stdout)
@@ -110,9 +108,8 @@ mod tests {
 
     #[test]
     fn should_run_with_log_successfully() {
-        let command = &["echo", "hello"];
         let mut logs = VecDeque::new();
-        arch_run_with_log(command, |log| {
+        arch_run_with_log("echo hello", |log| {
             logs.push_back(log.to_string());
         });
         assert!(logs.iter().any(|log| log.contains("hello")));
@@ -120,16 +117,14 @@ mod tests {
 
     #[test]
     fn should_exit_with_success_code() {
-        let command = &["pacman", "-Ss", "chrome"];
-        let mut child = arch_run(command);
+        let mut child = arch_run("pacman -Ss chrome");
         let status = child.wait().expect("Failed to wait for child");
         assert_eq!(status.success(), true);
     }
 
     #[test]
     fn should_exit_with_fail_code() {
-        let command = &["pacman", "-Qg", "plasmma"]; // notice the typo
-        let mut child = arch_run(command);
+        let mut child = arch_run("pacman -Qg plasmma");
         let status = child.wait().expect("Failed to wait for child");
         assert_ne!(status.success(), true);
     }

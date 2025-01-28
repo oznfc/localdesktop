@@ -6,13 +6,10 @@ use crate::{
         logging::{log_format, PolarBearExpectation},
     },
 };
-use eframe::{
-    egui::{self, Rect},
-    NativeOptions,
-};
+use eframe::{egui, NativeOptions};
 use std::{
     collections::VecDeque,
-    panic,
+    f32, panic,
     sync::{Arc, Mutex},
     thread,
 };
@@ -74,9 +71,9 @@ impl PolarBearApp {
                 scaffold::scaffold(&cloned_android_app, log);
 
                 // Step 2. Install dependencies if not already installed
-                arch_run_with_log(&["uname", "-a"], log);
+                arch_run_with_log("uname -a", log);
                 loop {
-                    let installed = arch_run(&["pacman", "-Qg", "plasma"])
+                    let installed = arch_run(&"pacman -Qg plasma")
                         .wait()
                         .pb_expect("pacman -Qg plasma failed")
                         .success();
@@ -93,15 +90,11 @@ impl PolarBearApp {
                                 ));
 
                                 arch_run_with_log(
-                                    &[
-                                        "sh",
-                                        "-c",
-                                        &format!(
-                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston",
+                                    &format!(
+                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston 2>&1",
+                                            // "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client dbus-run-session startplasma-wayland 2>&1",
                                             config::XDG_RUNTIME_DIR,
-                                            config::WAYLAND_SOCKET_NAME
-                                        ),
-                                    ],
+                                            config::WAYLAND_SOCKET_NAME),
                                     log,
                                 );
                             }
@@ -114,11 +107,8 @@ impl PolarBearApp {
                         }
                         break;
                     } else {
-                        arch_run(&["rm", "/var/lib/pacman/db.lck"]);
-                        arch_run_with_log(
-                            &["pacman", "-Syu", "plasma", "weston", "--noconfirm"],
-                            log,
-                        );
+                        arch_run("rm /var/lib/pacman/db.lck");
+                        arch_run_with_log("pacman -Syu plasma weston --noconfirm", log);
                     }
                 }
             }));
@@ -150,6 +140,7 @@ impl eframe::App for PolarBearApp {
                     ui.heading("Logs");
                 });
                 egui::ScrollArea::vertical()
+                    .auto_shrink(false)
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         ui.label(
