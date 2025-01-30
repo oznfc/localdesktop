@@ -5,7 +5,8 @@ use wayland_server::ListeningSocket;
 use crate::utils::config;
 
 pub fn bind_socket() -> Result<ListeningSocket, Box<dyn Error>> {
-    let socket_path = PathBuf::from(config::TMP_DIR).join(config::WAYLAND_SOCKET_NAME);
+    let socket_path =
+        PathBuf::from(config::ARCH_FS_ROOT.to_owned() + "/tmp").join(config::WAYLAND_SOCKET_NAME);
     let listener = ListeningSocket::bind_absolute(socket_path)?;
     Ok(listener)
 }
@@ -19,9 +20,10 @@ mod tests {
     #[test]
     fn should_bind_socket_successfully() {
         let result = bind_socket();
-        // make sure there is a `wayland-pb` socket in TMP_DIR
+        // make sure there is a `wayland-pb` socket in /tmp
         assert!(result.is_ok(), "Result is not ok");
-        let socket_path = PathBuf::from(config::TMP_DIR).join(config::WAYLAND_SOCKET_NAME);
+        let socket_path = PathBuf::from(config::ARCH_FS_ROOT.to_owned() + "/tmp")
+            .join(config::WAYLAND_SOCKET_NAME);
         assert!(socket_path.exists(), "Socket does not exist");
         assert!(
             socket_path

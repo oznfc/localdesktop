@@ -10,11 +10,15 @@ use crate::utils::{application_context::get_application_context, config};
 fn android_arch_run(command: &str) -> Child {
     // Run the command inside Proot
     let context = get_application_context().pb_expect("Failed to get application context");
-    println!("Context inside android_arch_run: {:?}", context);
+
+    #[cfg(not(test))]
+    let proot_loader = context.native_library_dir.join("loader.so");
+    #[cfg(test)]
+    let proot_loader = "/data/local/tmp/loader.so";
 
     Command::new(context.native_library_dir.join("proot.so"))
-        .env("PROOT_LOADER", context.native_library_dir.join("loader.so"))
-        .env("PROOT_TMP_DIR", context.data_dir.join("files/arch"))
+        .env("PROOT_LOADER", proot_loader)
+        .env("PROOT_TMP_DIR", config::ARCH_FS_ROOT)
         .arg("-r")
         .arg(config::ARCH_FS_ROOT)
         .arg("-L")

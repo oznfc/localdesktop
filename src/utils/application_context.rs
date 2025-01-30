@@ -7,6 +7,8 @@ use jni::{
 use std::path::PathBuf;
 use std::sync::RwLock;
 
+use super::config;
+
 #[derive(Debug, Clone)]
 pub struct ApplicationContext {
     pub cache_dir: PathBuf,
@@ -85,6 +87,14 @@ impl ApplicationContext {
 
 static APPLICATION_CONTEXT: RwLock<Option<ApplicationContext>> = RwLock::new(None);
 pub fn get_application_context() -> Option<ApplicationContext> {
+    #[cfg(test)]
+    return Some(ApplicationContext {
+        cache_dir: config::ARCH_FS_ROOT.into(),
+        data_dir: config::ARCH_FS_ROOT.into(),
+        native_library_dir: config::ARCH_FS_ROOT.into(), // push mock libraries here for testing
+    });
+
+    #[cfg(not(test))]
     APPLICATION_CONTEXT
         .read()
         .pb_expect("Failed to read application context")
