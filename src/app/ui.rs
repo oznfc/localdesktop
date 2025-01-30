@@ -131,14 +131,10 @@ impl PolarBearApp {
 
 impl eframe::App for PolarBearApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::SidePanel::right("log_panel")
+        egui::Window::new("Logs")
             .resizable(true)
             .default_width(320.0)
-            .width_range(80.0..=ctx.available_rect().width() / 2.0)
             .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.heading("Logs");
-                });
                 egui::ScrollArea::vertical()
                     .auto_shrink(false)
                     .stick_to_bottom(true)
