@@ -78,7 +78,7 @@ impl PolarBearApp {
                         .pb_expect("pacman -Qg plasma failed")
                         .success();
                     if installed {
-                        match PolarBearCompositor::build() {
+                        match PolarBearCompositor::build(&cloned_android_app) {
                             Ok(compositor) => {
                                 {
                                     shared.lock().unwrap().compositor.replace(compositor);
@@ -131,6 +131,19 @@ impl PolarBearApp {
 
 impl eframe::App for PolarBearApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if cfg!(debug_assertions) {
+            ctx.set_debug_on_hover(true);
+        }
+
+        if cfg!(debug_assertions) {
+            egui::Window::new("Inspection")
+                .resizable(true)
+                .default_width(320.0)
+                .show(ctx, |ui| {
+                    ctx.inspection_ui(ui);
+                });
+        }
+
         egui::Window::new("Logs")
             .resizable(true)
             .default_width(320.0)
@@ -167,6 +180,7 @@ impl eframe::App for PolarBearApp {
                 }
             };
         });
+
         self.shared.lock().unwrap().ctx = Some(ctx.clone());
     }
 }

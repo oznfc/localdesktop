@@ -6,6 +6,7 @@ use std::{
 };
 
 use eframe::egui::Vec2;
+use egui_winit::winit::platform::android::activity::AndroidApp;
 use smithay::{
     backend::{
         input::KeyState,
@@ -18,12 +19,14 @@ use smithay::{
             Color32F, Frame, Renderer,
         },
     },
-    delegate_compositor, delegate_data_device, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
+    delegate_xdg_shell,
     input::{
         self,
         keyboard::{FilterResult, KeyboardHandle},
         Seat, SeatHandler, SeatState,
     },
+    output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{protocol::wl_seat, Display},
@@ -35,6 +38,7 @@ use smithay::{
             with_surface_tree_downward, CompositorClientState, CompositorHandler, CompositorState,
             SurfaceAttributes, TraversalAction,
         },
+        output::OutputHandler,
         selection::{
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
@@ -56,7 +60,7 @@ use wayland_server::{
     Client, ListeningSocket,
 };
 
-use crate::utils::wayland::bind_socket;
+use crate::utils::{config, wayland::bind_socket};
 
 use super::renderer::PolarBearRenderer;
 
@@ -68,6 +72,7 @@ pub struct PolarBearCompositor {
     start_time: Instant,
     seat: Seat<State>,
     keyboard: KeyboardHandle<State>,
+    output: Output,
 }
 
 struct State {
@@ -196,15 +201,18 @@ impl ClientData for ClientState {
     }
 }
 
+impl OutputHandler for State {}
+
 // Macros used to delegate protocol handling to types in the app state.
 delegate_xdg_shell!(State);
 delegate_compositor!(State);
 delegate_shm!(State);
 delegate_seat!(State);
 delegate_data_device!(State);
+delegate_output!(State);
 
 impl PolarBearCompositor {
-    pub fn build() -> Result<PolarBearCompositor, Box<dyn Error>> {
+    pub fn build(app: &AndroidApp) -> Result<PolarBearCompositor, Box<dyn Error>> {
         let display = Display::new()?;
         let dh = display.handle();
 
@@ -226,6 +234,45 @@ impl PolarBearCompositor {
             seat_state,
         };
 
+        let app_config = app.config();
+        let display_width = app_config
+            .screen_width_dp()
+            .unwrap_or(config::FALLBACK_DISPLAY_WIDTH);
+        let display_height = app_config
+            .screen_height_dp()
+            .unwrap_or(config::FALLBACK_DISPLAY_HEIGHT);
+        let size = (display_width, display_height);
+        // Create the Output with given name and physical properties.
+        let output = Output::new(
+            "Polar Bear Wayland Compositor".into(), // the name of this output,
+            PhysicalProperties {
+                size: size.into(),                 // dimensions (width, height) in mm
+                subpixel: Subpixel::HorizontalRgb, // subpixel information
+                make: "Polar Bear".into(),         // make of the monitor
+                model: config::VERSION.into(),     // model of the monitor
+            },
+        );
+
+        // create a global, if you want to advertise it to clients
+        let _global = output.create_global::<State>(
+            &dh, // the display
+        ); // you can drop the global, if you never intend to destroy it.
+           // Now you can configure it
+        output.change_current_state(
+            Some(Mode {
+                size: size.into(),
+                refresh: 60000,
+            }), // the resolution mode,
+            Some(Transform::Normal), // global screen transformation
+            Some(Scale::Integer(1)), // global screen scaling factor
+            Some((0, 0).into()),     // output position
+        );
+        // set the preferred mode
+        output.set_preferred(Mode {
+            size: size.into(),
+            refresh: 60000,
+        });
+
         Ok(PolarBearCompositor {
             state,
             listener,
@@ -234,6 +281,7 @@ impl PolarBearCompositor {
             display,
             seat,
             keyboard,
+            output,
         })
     }
 
