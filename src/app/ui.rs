@@ -91,7 +91,7 @@ impl PolarBearApp {
 
                                 arch_run_with_log(
                                     &format!(
-                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston 2>&1",
+                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston --fullscreen 2>&1",
                                             // "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client dbus-run-session startplasma-wayland 2>&1",
                                             config::XDG_RUNTIME_DIR,
                                             config::WAYLAND_SOCKET_NAME),

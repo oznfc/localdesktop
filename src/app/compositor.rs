@@ -81,6 +81,7 @@ struct State {
     shm_state: ShmState,
     data_device_state: DataDeviceState,
     seat_state: SeatState<Self>,
+    size: (i32, i32),
 }
 
 impl BufferHandler for State {
@@ -94,6 +95,7 @@ impl XdgShellHandler for State {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         surface.with_pending_state(|state| {
+            state.size.replace(Size::from(self.size));
             state.states.set(xdg_toplevel::State::Activated);
         });
         surface.send_configure();
@@ -226,14 +228,6 @@ impl PolarBearCompositor {
 
         let keyboard = seat.add_keyboard(Default::default(), 200, 200).unwrap();
 
-        let state = State {
-            compositor_state: CompositorState::new::<State>(&dh),
-            xdg_shell_state: XdgShellState::new::<State>(&dh),
-            shm_state: ShmState::new::<State>(&dh, vec![]),
-            data_device_state: DataDeviceState::new::<State>(&dh),
-            seat_state,
-        };
-
         let app_config = app.config();
         let display_width = app_config
             .screen_width_dp()
@@ -272,6 +266,15 @@ impl PolarBearCompositor {
             size: size.into(),
             refresh: 60000,
         });
+
+        let state = State {
+            compositor_state: CompositorState::new::<State>(&dh),
+            xdg_shell_state: XdgShellState::new::<State>(&dh),
+            shm_state: ShmState::new::<State>(&dh, vec![]),
+            data_device_state: DataDeviceState::new::<State>(&dh),
+            seat_state,
+            size,
+        };
 
         Ok(PolarBearCompositor {
             state,
