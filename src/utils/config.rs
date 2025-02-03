@@ -12,6 +12,3 @@ pub const ARCH_FS_ARCHIVE: &str = "archlinux-aarch64-pd-v4.6.0.tar.xz";
 pub const WAYLAND_SOCKET_NAME: &str = "wayland-pb";
 
 pub const MAX_PANEL_LOG_ENTRIES: usize = 100;
-
-pub const FALLBACK_DISPLAY_WIDTH: i32 = 1280;
-pub const FALLBACK_DISPLAY_HEIGHT: i32 = 720;

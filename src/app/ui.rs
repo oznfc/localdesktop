@@ -9,7 +9,7 @@ use crate::{
 use eframe::{egui, NativeOptions};
 use std::{
     collections::VecDeque,
-    f32, panic,
+    panic,
     sync::{Arc, Mutex},
     thread,
 };
@@ -164,22 +164,24 @@ impl eframe::App for PolarBearApp {
                         )
                     });
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let renderer = PolarBearRenderer {
-                painter: ui.painter().clone(),
-            };
-            if let Some(compositor) = self.shared.lock().unwrap().compositor.as_mut() {
-                match compositor.draw(renderer, ui.available_size()) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        self.shared.lock().unwrap().log(log_format(
-                            "POLAR BEAR COMPOSITOR DRAW ERROR",
-                            &format!("{}", e),
-                        ));
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none().inner_margin(egui::Vec2::new(0.0, 0.0)))
+            .show(ctx, |ui| {
+                let renderer = PolarBearRenderer {
+                    painter: ui.painter().clone(),
+                };
+                if let Some(compositor) = self.shared.lock().unwrap().compositor.as_mut() {
+                    match compositor.draw(renderer, ui.available_size()) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            self.shared.lock().unwrap().log(log_format(
+                                "POLAR BEAR COMPOSITOR DRAW ERROR",
+                                &format!("{}", e),
+                            ));
+                        }
                     }
-                }
-            };
-        });
+                };
+            });
 
         self.shared.lock().unwrap().ctx = Some(ctx.clone());
     }

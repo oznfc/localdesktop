@@ -60,7 +60,7 @@ use wayland_server::{
     Client, ListeningSocket,
 };
 
-use crate::utils::{config, wayland::bind_socket};
+use crate::utils::{config, logging::PolarBearExpectation, wayland::bind_socket};
 
 use super::renderer::PolarBearRenderer;
 
@@ -228,13 +228,9 @@ impl PolarBearCompositor {
 
         let keyboard = seat.add_keyboard(Default::default(), 200, 200).unwrap();
 
-        let app_config = app.config();
-        let display_width = app_config
-            .screen_width_dp()
-            .unwrap_or(config::FALLBACK_DISPLAY_WIDTH);
-        let display_height = app_config
-            .screen_height_dp()
-            .unwrap_or(config::FALLBACK_DISPLAY_HEIGHT);
+        let native_window = app.native_window().pb_expect("Failed to get ANativeWindow");
+        let display_width = native_window.width();
+        let display_height = native_window.height();
         let size = (display_width, display_height);
         // Create the Output with given name and physical properties.
         let output = Output::new(
