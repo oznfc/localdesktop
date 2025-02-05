@@ -284,19 +284,13 @@ impl PolarBearCompositor {
         })
     }
 
-    pub fn keyboard_input_handler(self, keycode: u32, key_state: KeyState) {
-        let mut state = self.state;
-        self.keyboard.input::<(), _>(
-            &mut state,
-            keycode.into(),
-            key_state,
-            0.into(),
-            0,
-            |_, _, _| {
+    pub fn keyboard_input_handler(&mut self, keycode: u32, key_state: KeyState) {
+        let state = &mut self.state;
+        self.keyboard
+            .input::<(), _>(state, keycode.into(), key_state, 0.into(), 0, |_, _, _| {
                 //
                 FilterResult::Forward
-            },
-        );
+            });
     }
 
     pub fn pointer_motion_absolute_handler(self) {

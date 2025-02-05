@@ -7,6 +7,7 @@ use crate::{
     },
 };
 use eframe::{egui, NativeOptions};
+use smithay::backend::input::KeyState::{Pressed, Released};
 use std::{
     collections::VecDeque,
     panic,
@@ -130,6 +131,27 @@ impl PolarBearApp {
 }
 
 impl eframe::App for PolarBearApp {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        for event in &raw_input.events {
+            if let egui::Event::Key {
+                physical_key: Some(key),
+                pressed,
+                ..
+            } = event
+            {
+                let key_code = *key as u32;
+                let key_state = if *pressed { Pressed } else { Released };
+                self.shared
+                    .lock()
+                    .unwrap()
+                    .compositor
+                    .as_mut()
+                    .unwrap()
+                    .keyboard_input_handler(key_code, key_state);
+            }
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if cfg!(debug_assertions) {
             ctx.set_debug_on_hover(true);
