@@ -7,7 +7,17 @@ use crate::{
     },
 };
 use eframe::{egui, NativeOptions};
-use smithay::backend::input::KeyState::{Pressed, Released};
+use smithay::{
+    backend::input::{
+        KeyState::{Pressed, Released},
+        TouchSlot,
+    },
+    input::{
+        keyboard::FilterResult,
+        touch::{DownEvent, MotionEvent, UpEvent},
+    },
+    utils::{Serial, SERIAL_COUNTER},
+};
 use std::{
     collections::VecDeque,
     panic,
@@ -16,7 +26,7 @@ use std::{
 };
 
 pub struct Shared {
-    compositor: Option<PolarBearCompositor>,
+    pub compositor: Option<PolarBearCompositor>,
     ctx: Option<egui::Context>,
     logs: VecDeque<String>,
 }
@@ -133,21 +143,83 @@ impl PolarBearApp {
 impl eframe::App for PolarBearApp {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         for event in &raw_input.events {
-            if let egui::Event::Key {
-                physical_key: Some(key),
-                pressed,
-                ..
-            } = event
-            {
-                let key_code = *key as u32;
-                let key_state = if *pressed { Pressed } else { Released };
-                self.shared
-                    .lock()
-                    .unwrap()
-                    .compositor
-                    .as_mut()
-                    .unwrap()
-                    .keyboard_input_handler(key_code, key_state);
+            match event {
+                egui::Event::Key {
+                    key,
+                    physical_key,
+                    pressed,
+                    repeat,
+                    modifiers,
+                } => {
+                    if let Some(key_code) = physical_key {
+                        let mut shared = self.shared.lock().unwrap();
+                        let compositor = shared.compositor.as_mut().unwrap();
+                        let surface = compositor.get_surface();
+                        let key_state = if *pressed { Pressed } else { Released };
+                        let key_code = *key_code as u32;
+                        let keyboard = &compositor.keyboard;
+                        keyboard.set_focus(&mut compositor.state, surface.clone(), 0.into());
+                        keyboard.input::<(), _>(
+                            &mut compositor.state,
+                            key_code.into(),
+                            key_state,
+                            0.into(),
+                            0,
+                            |_, _, _| FilterResult::Forward,
+                        );
+                    }
+                }
+                egui::Event::Touch {
+                    device_id,
+                    id,
+                    pos,
+                    phase,
+                    ..
+                } => {
+                    let mut shared = self.shared.lock().unwrap();
+                    let compositor = shared.compositor.as_mut().unwrap();
+                    let surface = compositor.get_surface();
+                    let touch = &compositor.touch;
+                    let slot = Option::Some(id.0 as u32).into();
+                    let location = (pos.x as f64, pos.y as f64).into();
+                    let serial = SERIAL_COUNTER.next_serial();
+                    let time = compositor.start_time.elapsed().as_millis() as u32;
+
+                    match phase {
+                        egui::TouchPhase::Start => {
+                            touch.down(
+                                &mut compositor.state,
+                                surface.clone().map(|surface| (surface, location)),
+                                &DownEvent {
+                                    slot,
+                                    location,
+                                    serial,
+                                    time,
+                                },
+                            );
+                        }
+                        egui::TouchPhase::Move => {
+                            touch.motion(
+                                &mut compositor.state,
+                                surface.clone().map(|surface| (surface, location)),
+                                &MotionEvent {
+                                    slot,
+                                    location,
+                                    time,
+                                },
+                            );
+                        }
+                        egui::TouchPhase::End => {
+                            touch.up(&mut compositor.state, &UpEvent { slot, serial, time });
+                        }
+                        egui::TouchPhase::Cancel => {
+                            touch.cancel(&mut compositor.state);
+                        }
+                    }
+
+                    touch.frame(&mut compositor.state);
+                }
+                _ => {}
             }
         }
     }

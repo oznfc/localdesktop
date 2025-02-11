@@ -8,24 +8,17 @@ use std::{
 use eframe::egui::Vec2;
 use egui_winit::winit::platform::android::activity::AndroidApp;
 use smithay::{
-    backend::{
-        input::KeyState,
-        renderer::{
-            element::{
-                surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-                Kind,
-            },
-            utils::{draw_render_elements, on_commit_buffer_handler},
-            Color32F, Frame, Renderer,
+    backend::renderer::{
+        element::{
+            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+            Kind,
         },
+        utils::{draw_render_elements, on_commit_buffer_handler},
+        Color32F, Frame, Renderer,
     },
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_shell,
-    input::{
-        self,
-        keyboard::{FilterResult, KeyboardHandle},
-        Seat, SeatHandler, SeatState,
-    },
+    input::{self, keyboard::KeyboardHandle, touch::TouchHandle, Seat, SeatHandler, SeatState},
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -65,17 +58,18 @@ use crate::utils::{config, logging::PolarBearExpectation, wayland::bind_socket};
 use super::renderer::PolarBearRenderer;
 
 pub struct PolarBearCompositor {
-    state: State,
+    pub state: State,
     display: Display<State>,
     listener: ListeningSocket,
     clients: Arc<Mutex<Vec<Client>>>,
-    start_time: Instant,
+    pub start_time: Instant,
     seat: Seat<State>,
-    keyboard: KeyboardHandle<State>,
+    pub keyboard: KeyboardHandle<State>,
+    pub touch: TouchHandle<State>,
     output: Output,
 }
 
-struct State {
+pub struct State {
     compositor_state: CompositorState,
     xdg_shell_state: XdgShellState,
     shm_state: ShmState,
@@ -227,6 +221,7 @@ impl PolarBearCompositor {
         let start_time = Instant::now();
 
         let keyboard = seat.add_keyboard(Default::default(), 200, 200).unwrap();
+        let touch = seat.add_touch();
 
         let native_window = app.native_window().pb_expect("Failed to get ANativeWindow");
         let display_width = native_window.width();
@@ -280,20 +275,12 @@ impl PolarBearCompositor {
             display,
             seat,
             keyboard,
+            touch,
             output,
         })
     }
 
-    pub fn keyboard_input_handler(&mut self, keycode: u32, key_state: KeyState) {
-        let state = &mut self.state;
-        self.keyboard
-            .input::<(), _>(state, keycode.into(), key_state, 0.into(), 0, |_, _, _| {
-                //
-                FilterResult::Forward
-            });
-    }
-
-    pub fn pointer_motion_absolute_handler(self) {
+    pub fn get_surface(&mut self) -> Option<WlSurface> {
         if let Some(surface) = self
             .state
             .xdg_shell_state
@@ -303,9 +290,9 @@ impl PolarBearCompositor {
             .cloned()
         {
             let surface = surface.wl_surface().clone();
-            let mut state = self.state;
-            self.keyboard.set_focus(&mut state, Some(surface), 0.into());
+            return Some(surface);
         };
+        return None;
     }
 
     pub fn draw(
