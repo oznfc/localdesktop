@@ -220,7 +220,8 @@ impl PolarBearCompositor {
 
         let start_time = Instant::now();
 
-        let keyboard = seat.add_keyboard(Default::default(), 200, 200).unwrap();
+        // Key repeat rate and delay are in milliseconds: https://wayland-book.com/seat/keyboard.html
+        let keyboard = seat.add_keyboard(Default::default(), 1000, 200).unwrap();
         let touch = seat.add_touch();
 
         let native_window = app.native_window().pb_expect("Failed to get ANativeWindow");
