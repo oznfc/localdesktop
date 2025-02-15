@@ -61,6 +61,12 @@ impl PolarBearApp {
         #[cfg(target_os = "android")]
         ApplicationContext::build(&cloned_android_app);
 
+        // Enable fullscreen immersive mode
+        cloned_android_app.set_window_flags(
+            WindowManagerFlags::FULLSCREEN | WindowManagerFlags::LAYOUT_IN_SCREEN,
+            WindowManagerFlags::empty(),
+        );
+
         let shared = Arc::new(Mutex::new(Shared {
             compositor: None,
             ctx: None,
