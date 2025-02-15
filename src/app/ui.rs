@@ -4,9 +4,11 @@ use crate::{
     utils::{
         config,
         logging::{log_format, PolarBearExpectation},
+        patches::to_scan_code,
     },
 };
 use eframe::{egui, NativeOptions};
+use egui_winit::winit::platform::android::activity::WindowManagerFlags;
 use smithay::{
     backend::input::{
         KeyState::{Pressed, Released},
@@ -48,17 +50,14 @@ pub struct PolarBearApp {
     shared: Arc<Mutex<Shared>>,
 }
 
-#[cfg(target_os = "android")]
 use crate::{arch::scaffold, utils::application_context::ApplicationContext};
 
 impl PolarBearApp {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
-        #[cfg(target_os = "android")]
         let cloned_android_app = options
             .android_app
             .clone()
             .pb_expect("Failed to clone AndroidApp");
-        #[cfg(target_os = "android")]
         ApplicationContext::build(&cloned_android_app);
 
         // Enable fullscreen immersive mode
@@ -84,7 +83,6 @@ impl PolarBearApp {
                 };
 
                 // Step 1. Setup Arch FS if not already installed
-                #[cfg(target_os = "android")]
                 scaffold::scaffold(&cloned_android_app, log);
 
                 // Step 2. Install dependencies if not already installed
@@ -158,21 +156,22 @@ impl eframe::App for PolarBearApp {
                     modifiers,
                 } => {
                     if let Some(key_code) = physical_key {
-                        let mut shared = self.shared.lock().unwrap();
-                        let compositor = shared.compositor.as_mut().unwrap();
-                        let surface = compositor.get_surface();
-                        let key_state = if *pressed { Pressed } else { Released };
-                        let key_code = *key_code as u32;
-                        let keyboard = &compositor.keyboard;
-                        keyboard.set_focus(&mut compositor.state, surface.clone(), 0.into());
-                        keyboard.input::<(), _>(
-                            &mut compositor.state,
-                            key_code.into(),
-                            key_state,
-                            0.into(),
-                            0,
-                            |_, _, _| FilterResult::Forward,
-                        );
+                        if let Some(scan_code) = to_scan_code(*key_code) {
+                            let mut shared = self.shared.lock().unwrap();
+                            let compositor = shared.compositor.as_mut().unwrap();
+                            let surface = compositor.get_surface();
+                            let key_state = if *pressed { Pressed } else { Released };
+                            let keyboard = &compositor.keyboard;
+                            keyboard.set_focus(&mut compositor.state, surface.clone(), 0.into());
+                            keyboard.input::<(), _>(
+                                &mut compositor.state,
+                                (scan_code + 8).into(),
+                                key_state,
+                                0.into(),
+                                0,
+                                |_, _, _| FilterResult::Forward,
+                            );
+                        }
                     }
                 }
                 egui::Event::Touch {
@@ -186,8 +185,10 @@ impl eframe::App for PolarBearApp {
                     let compositor = shared.compositor.as_mut().unwrap();
                     let surface = compositor.get_surface();
                     let touch = &compositor.touch;
-                    let slot = Option::Some(id.0 as u32).into();
-                    let location = (pos.x as f64, pos.y as f64).into();
+                    let slot = Option::Some(id.0 as u32 + 1).into();
+                    let scale_factor = _ctx.native_pixels_per_point().unwrap_or(1.0);
+                    let location =
+                        ((pos.x * scale_factor) as f64, (pos.y * scale_factor) as f64).into();
                     let serial = SERIAL_COUNTER.next_serial();
                     let time = compositor.start_time.elapsed().as_millis() as u32;
 
@@ -195,7 +196,9 @@ impl eframe::App for PolarBearApp {
                         egui::TouchPhase::Start => {
                             touch.down(
                                 &mut compositor.state,
-                                surface.clone().map(|surface| (surface, location)),
+                                surface
+                                    .clone()
+                                    .map(|surface| (surface, (0f64, 0f64).into())),
                                 &DownEvent {
                                     slot,
                                     location,
@@ -207,7 +210,9 @@ impl eframe::App for PolarBearApp {
                         egui::TouchPhase::Move => {
                             touch.motion(
                                 &mut compositor.state,
-                                surface.clone().map(|surface| (surface, location)),
+                                surface
+                                    .clone()
+                                    .map(|surface| (surface, (0f64, 0f64).into())),
                                 &MotionEvent {
                                     slot,
                                     location,

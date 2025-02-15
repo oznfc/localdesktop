@@ -12,9 +12,9 @@ pub mod arch {
     pub mod scaffold; // No need for an additional cfg check since the whole crate is Android-only
 }
 pub mod utils {
+    pub mod application_context;
     pub mod config;
     pub mod logging;
+    pub mod patches;
     pub mod wayland;
-
-    pub mod application_context;
 }

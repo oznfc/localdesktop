@@ -3,11 +3,9 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::process::{Child, Command, Stdio};
 
-#[cfg(target_os = "android")]
 use crate::utils::{application_context::get_application_context, config};
 
-#[cfg(target_os = "android")]
-fn android_arch_run(command: &str) -> Child {
+pub fn arch_run(command: &str) -> Child {
     // Run the command inside Proot
     let context = get_application_context().pb_expect("Failed to get application context");
 
@@ -53,30 +51,6 @@ fn android_arch_run(command: &str) -> Child {
         .stdout(Stdio::piped())
         .spawn()
         .pb_expect("Failed to run command")
-}
-
-#[cfg(all(unix, not(target_os = "android")))]
-fn unix_arch_run(command: &str) -> Child {
-    // On MacOS, use orb to run the command
-    Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .stdout(Stdio::piped())
-        .spawn()
-        .pb_expect("Failed to run command")
-}
-
-pub fn arch_run(command: &str) -> Child {
-    #[cfg(target_os = "android")]
-    return android_arch_run(command);
-
-    #[cfg(target_os = "macos")]
-    panic!("Initially, to ease development, we use OrbStack to mimic PRoot behavior on MacOS. However, you cannot bind an UNIX socket from MacOS and connect to it from the OrbStack Linux machine, since UNIX sockets require kernel support. SHM may not work as well. Luckily, we found a way to debug Rust code running directly on Android, so MacOS specific code is not needed anymore.");
-
-    #[cfg(all(unix, not(target_os = "android")))]
-    return unix_arch_run(command); // On Unix, we can use the host directly.
-
-    panic!("Unsupported OS! Please run on Android/Unix.");
 }
 
 pub fn arch_run_with_log<T: FnMut(String)>(command: &str, mut log: T) {
