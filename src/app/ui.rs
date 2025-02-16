@@ -1,6 +1,6 @@
 use crate::{
     app::{compositor::PolarBearCompositor, renderer::PolarBearRenderer},
-    arch::run::{arch_run, arch_run_with_log},
+    arch::run::{arch_run, arch_run_as_with_log, arch_run_with_log},
     utils::{
         config,
         logging::{log_format, PolarBearExpectation},
@@ -10,15 +10,12 @@ use crate::{
 use eframe::{egui, NativeOptions};
 use egui_winit::winit::platform::android::activity::WindowManagerFlags;
 use smithay::{
-    backend::input::{
-        KeyState::{Pressed, Released},
-        TouchSlot,
-    },
+    backend::input::KeyState::{Pressed, Released},
     input::{
         keyboard::FilterResult,
         touch::{DownEvent, MotionEvent, UpEvent},
     },
-    utils::{Serial, SERIAL_COUNTER},
+    utils::SERIAL_COUNTER,
 };
 use std::{
     collections::VecDeque,
@@ -88,6 +85,21 @@ impl PolarBearApp {
                 // Step 2. Install dependencies if not already installed
                 arch_run_with_log("uname -a", log);
                 loop {
+                    let username = "teddy"; // todo!("Ask the user what username they want to use, and load the answer from somewhere")
+
+                    if !arch_run(&format!("id {username}"))
+                        .wait_with_output()
+                        .map(|output| output.status.success())
+                        .unwrap_or(false)
+                    {
+                        // Ask the
+                        let command =
+                            format!("useradd -m -G wheel {username} && passwd -d {username}");
+                        arch_run(&command)
+                            .wait()
+                            .pb_expect(&format!("{} failed", command));
+                    }
+
                     let installed = arch_run(&"pacman -Qg plasma")
                         .wait()
                         .pb_expect("pacman -Qg plasma failed")
@@ -98,12 +110,13 @@ impl PolarBearApp {
                                 {
                                     shared.lock().unwrap().compositor.replace(compositor);
                                 }
-                                arch_run_with_log(
+                                arch_run_as_with_log(
                                     &format!(
                                             // "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client weston --fullscreen 2>&1",
-                                            "HOME=/root XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client dbus-launch startplasma-wayland 2>&1",
+                                            "HOME=/home/teddy USER=teddy XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland 2>&1",
                                             config::XDG_RUNTIME_DIR,
                                             config::WAYLAND_SOCKET_NAME),
+                                    username,
                                     log,
                                 );
                             }

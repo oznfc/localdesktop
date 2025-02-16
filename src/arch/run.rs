@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 
 use crate::utils::{application_context::get_application_context, config};
 
-pub fn arch_run(command: &str) -> Child {
+pub fn arch_run_as(command: &str, user: &str) -> Child {
     // Run the command inside Proot
     let context = get_application_context().pb_expect("Failed to get application context");
 
@@ -14,7 +14,8 @@ pub fn arch_run(command: &str) -> Child {
     #[cfg(test)]
     let proot_loader = "/data/local/tmp/loader.so";
 
-    Command::new(context.native_library_dir.join("proot.so"))
+    let mut process = Command::new(context.native_library_dir.join("proot.so"));
+    process
         .env("PROOT_LOADER", proot_loader)
         .env("PROOT_TMP_DIR", config::ARCH_FS_ROOT)
         .arg("-r")
@@ -44,8 +45,13 @@ pub fn arch_run(command: &str) -> Child {
         .arg("\"HOME=/root\"")
         .arg("\"LANG=C.UTF-8\"")
         .arg("\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"")
-        .arg("\"TMPDIR=/tmp\"")
-        .arg("sh")
+        .arg("\"TMPDIR=/tmp\"");
+    if user == "root" {
+        process.arg("sh");
+    } else {
+        process.arg("su").arg("-").arg(user);
+    }
+    process
         .arg("-c")
         .arg(command)
         .stdout(Stdio::piped())
@@ -53,8 +59,21 @@ pub fn arch_run(command: &str) -> Child {
         .pb_expect("Failed to run command")
 }
 
+pub fn arch_run(command: &str) -> Child {
+    arch_run_as(command, "root")
+}
+
 pub fn arch_run_with_log<T: FnMut(String)>(command: &str, mut log: T) {
     let child = arch_run(command);
+    let reader = BufReader::new(child.stdout.pb_expect("Failed to read stdout"));
+    for line in reader.lines() {
+        let line = line.pb_expect("Failed to read line");
+        log(line);
+    }
+}
+
+pub fn arch_run_as_with_log<T: FnMut(String)>(command: &str, user: &str, mut log: T) {
+    let child = arch_run_as(command, user);
     let reader = BufReader::new(child.stdout.pb_expect("Failed to read stdout"));
     for line in reader.lines() {
         let line = line.pb_expect("Failed to read line");
