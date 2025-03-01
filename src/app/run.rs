@@ -1,16 +1,15 @@
 use crate::{
     app::{compositor::PolarBearCompositor, renderer::PolarBearRenderer},
     arch::{
-        run::arch_run_with_log,
         scaffold::scaffold,
-        setup::{check_install_and_launch, DesktopOption},
+        setup::{setup, SetupOptions},
     },
     utils::{
         application_context::ApplicationContext, config, logging::log_format, patches::to_scan_code,
     },
 };
 use eframe::{egui, NativeOptions};
-use egui_winit::winit::platform::android::activity::WindowManagerFlags;
+use egui_winit::winit::platform::android::activity::{AndroidApp, WindowManagerFlags};
 use smithay::{
     backend::input::KeyState::{Pressed, Released},
     input::{
@@ -45,17 +44,19 @@ impl Shared {
     }
 }
 
+#[derive(Clone)]
 pub struct PolarBearApp {
     pub shared: Arc<Mutex<Shared>>,
+    pub android_app: AndroidApp,
 }
 
 impl PolarBearApp {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
-        let cloned_android_app = options.android_app.clone().unwrap();
-        ApplicationContext::build(&cloned_android_app);
+        let android_app = options.android_app.clone().unwrap();
+        ApplicationContext::build(&android_app);
 
         // Enable fullscreen immersive mode
-        cloned_android_app.set_window_flags(
+        android_app.set_window_flags(
             WindowManagerFlags::FULLSCREEN | WindowManagerFlags::LAYOUT_IN_SCREEN,
             WindowManagerFlags::empty(),
         );
@@ -68,27 +69,29 @@ impl PolarBearApp {
 
         let app = PolarBearApp {
             shared: Arc::clone(&shared),
+            android_app,
         };
 
+        let cloned_app = app.clone();
         thread::spawn(move || {
             let result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let log = |it| {
-                    shared.lock().unwrap().log(it);
-                };
-
                 // Step 1. Setup Arch FS if not already installed
-                scaffold(&cloned_android_app, log);
-                arch_run_with_log("uname -a", log);
+                scaffold(&cloned_app);
 
                 // Step 2. Install dependencies if not already installed
-                check_install_and_launch(DesktopOption {
-                    android_app: &cloned_android_app,
-                    shared: Arc::clone(&shared),
-                    username: "teddy", // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-                    package_group: "plasma",
-                    launch_command:
-                        "/usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland",
-                });
+                let package_group = "plasma".to_string();
+                // let launch_command =
+                //     "/usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
+                let launch_command = "weston --fullscreen --scale=2".to_string();
+
+                setup(
+                    &cloned_app,
+                    SetupOptions {
+                        username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
+                        package_group,
+                        launch_command,
+                    },
+                );
             }));
             if let Err(e) = result {
                 let error_msg = e

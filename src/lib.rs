@@ -7,7 +7,7 @@ pub mod app {
     pub mod run;
 }
 pub mod arch {
-    pub mod run;
+    pub mod process;
     pub mod scaffold;
     pub mod setup;
 }

@@ -1,16 +1,21 @@
-use crate::utils::{
-    application_context::get_application_context, config, logging::PolarBearExpectation,
+use crate::{
+    app::run::PolarBearApp,
+    utils::{application_context::get_application_context, config, logging::PolarBearExpectation},
 };
-use egui_winit::winit::platform::android::activity::AndroidApp;
 use std::fs;
 use tar::Archive;
 use xz2::read::XzDecoder;
 
-pub fn scaffold<T: FnMut(String)>(android_app: &AndroidApp, mut log: T) {
+pub fn scaffold(app: &PolarBearApp) {
+    let log = |it| {
+        app.shared.lock().unwrap().log(it);
+    };
+
     let context = get_application_context().pb_expect("Failed to get application context");
     println!("Application context: {:?}", context);
     let fs_root = std::path::Path::new(config::ARCH_FS_ROOT);
-    let tar_file = android_app
+    let tar_file = app
+        .android_app
         .asset_manager()
         .open(
             std::ffi::CString::new(config::ARCH_FS_ARCHIVE)
