@@ -85,10 +85,9 @@ impl PolarBearApp {
                     android_app: &cloned_android_app,
                     shared: Arc::clone(&shared),
                     username: "teddy", // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-                    package_group: "gnome",
-                    // launch_command:
-                    //     "/usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland",
-                    launch_command: "gnome",
+                    package_group: "plasma",
+                    launch_command:
+                        "/usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland",
                 });
             }));
             if let Err(e) = result {

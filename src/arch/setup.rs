@@ -80,7 +80,7 @@ pub fn check_install_and_launch(options: DesktopOption) {
             break;
         } else {
             arch_run("rm /var/lib/pacman/db.lck");
-            arch_run_with_log(&format!("pacman -Syu {} --noconfirm", package_group), log);
+            arch_run_with_log(&format!("stdbuf -oL pacman -Syu {} --noconfirm --noprogressbar", package_group), log);
         }
     }
 }
