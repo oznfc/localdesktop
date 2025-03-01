@@ -5,7 +5,6 @@ use std::fmt::{Debug, Display};
 use eframe::egui::{
     Color32 as EguiColor, ColorImage, Painter, Pos2, Rect as EguiRect, TextureOptions,
 };
-use smithay::backend::allocator::format::has_alpha;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::{
     sync::SyncPoint, DebugFlags, ImportDma, ImportDmaWl, ImportMem, ImportMemWl, Renderer,
