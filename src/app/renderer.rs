@@ -5,14 +5,15 @@ use std::fmt::{Debug, Display};
 use eframe::egui::{
     Color32 as EguiColor, ColorImage, Painter, Pos2, Rect as EguiRect, TextureOptions,
 };
-use smithay::backend::allocator::Fourcc;
+use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::backend::allocator::{Buffer as AllocatorBuffer, Fourcc};
 use smithay::backend::renderer::{
     sync::SyncPoint, DebugFlags, ImportDma, ImportDmaWl, ImportMem, ImportMemWl, Renderer,
     TextureFilter,
 };
 use smithay::backend::renderer::{Color32F, Frame, Texture};
 use smithay::utils::{Buffer, Physical, Rectangle, Size, Transform};
-use smithay::wayland::shm::{shm_format_to_fourcc, with_buffer_contents, BufferAccessError};
+use smithay::wayland::shm::{shm_format_to_fourcc, with_buffer_contents};
 
 pub struct PolarBearRenderer {
     pub painter: Painter,
@@ -117,15 +118,90 @@ impl ImportMem for PolarBearRenderer {
     }
 }
 
-impl ImportDmaWl for PolarBearRenderer {}
+impl ImportDmaWl for PolarBearRenderer {
+    fn import_dma_buffer(
+        &mut self,
+        buffer: &wayland_server::protocol::wl_buffer::WlBuffer,
+        _surface: Option<&smithay::wayland::compositor::SurfaceData>,
+        damage: &[Rectangle<i32, Buffer>],
+    ) -> Result<<Self as Renderer>::TextureId, <Self as Renderer>::Error> {
+        // Extract the dmabuf from the Wayland buffer
+        let dmabuf = smithay::wayland::dmabuf::get_dmabuf(buffer)
+            .or_else(|e| Err(PolarBearRenderError(e.to_string())))?;
+
+        // Extract the width, height, and format from the dmabuf
+        let width = dmabuf.width() as usize;
+        let height = dmabuf.height() as usize;
+        let format = dmabuf.format();
+
+        // Ensure the format is supported
+        if format.code != Fourcc::Argb8888 {
+            return Err(PolarBearRenderError(
+                "Unsupported dmabuf format".to_string(),
+            ));
+        }
+
+        // Map the dmabuf to access its contents
+        let mapping = dmabuf
+            .map_plane(
+                0,
+                smithay::backend::allocator::dmabuf::DmabufMappingMode::READ,
+            )
+            .map_err(|e| PolarBearRenderError(e.to_string()))?;
+        let data =
+            unsafe { std::slice::from_raw_parts(mapping.ptr() as *const u8, mapping.length()) };
+
+        // Create a ColorImage from the dmabuf data
+        let color_image = ColorImage::from_rgba_unmultiplied([width, height], data);
+
+        // Load the texture using the painter
+        let texture = self
+            .painter
+            .ctx()
+            .load_texture("", color_image, TextureOptions::default());
+
+        Ok(PolarBearTexture(RefCell::new(texture)))
+    }
+}
 
 impl ImportDma for PolarBearRenderer {
     fn import_dmabuf(
         &mut self,
-        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+        dmabuf: &Dmabuf,
         _damage: Option<&[Rectangle<i32, Buffer>]>,
     ) -> Result<<Self as Renderer>::TextureId, <Self as Renderer>::Error> {
-        Err(PolarBearRenderError("Dmabuf not yet supported".to_string()))
+        // Extract the width, height, and format from the dmabuf
+        let width = dmabuf.width() as usize;
+        let height = dmabuf.height() as usize;
+        let format = dmabuf.format();
+
+        // Ensure the format is supported
+        if format.code != Fourcc::Argb8888 {
+            return Err(PolarBearRenderError(
+                "Unsupported dmabuf format".to_string(),
+            ));
+        }
+
+        // Map the dmabuf to access its contents
+        let mapping = dmabuf
+            .map_plane(
+                0,
+                smithay::backend::allocator::dmabuf::DmabufMappingMode::READ,
+            )
+            .map_err(|e| PolarBearRenderError(e.to_string()))?;
+        let data =
+            unsafe { std::slice::from_raw_parts(mapping.ptr() as *const u8, mapping.length()) };
+
+        // Create a ColorImage from the dmabuf data
+        let color_image = ColorImage::from_rgba_unmultiplied([width, height], data);
+
+        // Load the texture using the painter
+        let texture = self
+            .painter
+            .ctx()
+            .load_texture("", color_image, TextureOptions::default());
+
+        Ok(PolarBearTexture(RefCell::new(texture)))
     }
 }
 
