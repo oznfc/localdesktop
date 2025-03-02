@@ -3,8 +3,8 @@
 pub mod android_main;
 pub mod app {
     pub mod compositor;
-    pub mod renderer;
-    pub mod run;
+    pub mod input;
+    pub mod winit;
 }
 pub mod arch {
     pub mod process;

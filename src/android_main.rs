@@ -1,6 +1,6 @@
-use crate::app::run::PolarBearApp;
-use eframe::{NativeOptions, Renderer};
-use egui_winit::winit::platform::android::activity::AndroidApp;
+use winit::platform::android::activity::AndroidApp;
+
+use crate::app::compositor::run_winit;
 
 #[no_mangle]
 fn android_main(app: AndroidApp) {
@@ -9,10 +9,5 @@ fn android_main(app: AndroidApp) {
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
 
-    let options = NativeOptions {
-        android_app: Some(app),
-        renderer: Renderer::Glow,
-        ..Default::default()
-    };
-    PolarBearApp::run(options).unwrap();
+    run_winit();
 }

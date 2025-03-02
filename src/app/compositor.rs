@@ -1,37 +1,29 @@
-use std::{
-    error::Error,
-    os::unix::io::OwnedFd,
-    sync::{Arc, Mutex},
-    time::Instant, // Added import
-};
+use std::{os::unix::io::OwnedFd, sync::Arc};
 
-use eframe::egui::Vec2;
-use egui_winit::winit::platform::android::activity::AndroidApp;
+use ::winit::platform::pump_events::PumpStatus;
 use smithay::{
-    backend::renderer::{
-        element::{
-            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-            Kind,
+    backend::{
+        input::{InputEvent, KeyboardKeyEvent},
+        renderer::{
+            element::{
+                surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+                Kind,
+            },
+            gles::GlesRenderer,
+            utils::{draw_render_elements, on_commit_buffer_handler},
+            Color32F, Frame, Renderer,
         },
-        utils::{draw_render_elements, on_commit_buffer_handler},
-        Color32F, Frame, Renderer,
     },
-    delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_shell,
-    input::{self, keyboard::KeyboardHandle, touch::TouchHandle, Seat, SeatHandler, SeatState},
-    output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
-    reexports::{
-        wayland_protocols::xdg::shell::server::xdg_toplevel,
-        wayland_server::{protocol::wl_seat, Display},
-    },
-    utils::{Rectangle, Serial, Size, Transform},
+    delegate_compositor, delegate_data_device, delegate_seat, delegate_shm, delegate_xdg_shell,
+    input::{keyboard::FilterResult, Seat, SeatHandler, SeatState},
+    reexports::wayland_server::{protocol::wl_seat, Display},
+    utils::{Rectangle, Serial, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
             with_surface_tree_downward, CompositorClientState, CompositorHandler, CompositorState,
             SurfaceAttributes, TraversalAction,
         },
-        output::OutputHandler,
         selection::{
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
@@ -44,6 +36,7 @@ use smithay::{
         shm::{ShmHandler, ShmState},
     },
 };
+use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
     backend::{ClientData, ClientId, DisconnectReason},
     protocol::{
@@ -53,43 +46,21 @@ use wayland_server::{
     Client, ListeningSocket,
 };
 
-use crate::utils::{config, logging::PolarBearExpectation, wayland::bind_socket};
+use crate::utils::logging::PolarBearExpectation;
 
-use super::renderer::PolarBearRenderer;
+use super::winit::{self, WinitEvent};
 
-pub struct PolarBearCompositor {
-    pub state: State,
-    display: Display<State>,
-    listener: ListeningSocket,
-    clients: Arc<Mutex<Vec<Client>>>,
-    pub start_time: Instant,
-    seat: Seat<State>,
-    pub keyboard: KeyboardHandle<State>,
-    pub touch: TouchHandle<State>,
-    output: Output,
-}
-
-pub struct State {
-    compositor_state: CompositorState,
-    xdg_shell_state: XdgShellState,
-    shm_state: ShmState,
-    data_device_state: DataDeviceState,
-    seat_state: SeatState<Self>,
-    size: (i32, i32),
-}
-
-impl BufferHandler for State {
+impl BufferHandler for App {
     fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
 }
 
-impl XdgShellHandler for State {
+impl XdgShellHandler for App {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         surface.with_pending_state(|state| {
-            state.size.replace(Size::from(self.size));
             state.states.set(xdg_toplevel::State::Activated);
         });
         surface.send_configure();
@@ -113,22 +84,22 @@ impl XdgShellHandler for State {
     }
 }
 
-impl SelectionHandler for State {
+impl SelectionHandler for App {
     type SelectionUserData = ();
 }
 
-impl DataDeviceHandler for State {
+impl DataDeviceHandler for App {
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device_state
     }
 }
 
-impl ClientDndGrabHandler for State {}
-impl ServerDndGrabHandler for State {
+impl ClientDndGrabHandler for App {}
+impl ServerDndGrabHandler for App {
     fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: Seat<Self>) {}
 }
 
-impl CompositorHandler for State {
+impl CompositorHandler for App {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
     }
@@ -142,13 +113,13 @@ impl CompositorHandler for State {
     }
 }
 
-impl ShmHandler for State {
+impl ShmHandler for App {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
 }
 
-impl SeatHandler for State {
+impl SeatHandler for App {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
     type TouchFocus = WlSurface;
@@ -158,7 +129,155 @@ impl SeatHandler for State {
     }
 
     fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: input::pointer::CursorImageStatus) {}
+    fn cursor_image(
+        &mut self,
+        _seat: &Seat<Self>,
+        _image: smithay::input::pointer::CursorImageStatus,
+    ) {
+    }
+}
+
+struct App {
+    compositor_state: CompositorState,
+    xdg_shell_state: XdgShellState,
+    shm_state: ShmState,
+    seat_state: SeatState<Self>,
+    data_device_state: DataDeviceState,
+
+    seat: Seat<Self>,
+}
+
+pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
+    let mut display: Display<App> = Display::new()?;
+    let dh = display.handle();
+
+    let compositor_state = CompositorState::new::<App>(&dh);
+    let shm_state = ShmState::new::<App>(&dh, vec![]);
+    let mut seat_state = SeatState::new();
+    let seat = seat_state.new_wl_seat(&dh, "winit");
+
+    let mut state = {
+        App {
+            compositor_state,
+            xdg_shell_state: XdgShellState::new::<App>(&dh),
+            shm_state,
+            seat_state,
+            data_device_state: DataDeviceState::new::<App>(&dh),
+            seat,
+        }
+    };
+
+    let listener = ListeningSocket::bind("wayland-5").unwrap();
+    let mut clients = Vec::new();
+
+    let (mut backend, mut winit) = winit::init::<GlesRenderer>()
+        .pb_expect("Failed to initialize Polar Bear custom winit backend");
+
+    let start_time = std::time::Instant::now();
+
+    let keyboard = state
+        .seat
+        .add_keyboard(Default::default(), 200, 200)
+        .unwrap();
+
+    std::env::set_var("WAYLAND_DISPLAY", "wayland-5");
+    std::process::Command::new("weston-terminal").spawn().ok();
+
+    loop {
+        let status = winit.dispatch_new_events(|event| match event {
+            WinitEvent::Resized { .. } => {}
+            WinitEvent::Input(event) => match event {
+                InputEvent::Keyboard { event } => {
+                    keyboard.input::<(), _>(
+                        &mut state,
+                        event.key_code(),
+                        event.state(),
+                        0.into(),
+                        0,
+                        |_, _, _| {
+                            //
+                            FilterResult::Forward
+                        },
+                    );
+                }
+                InputEvent::PointerMotionAbsolute { .. } => {
+                    if let Some(surface) = state
+                        .xdg_shell_state
+                        .toplevel_surfaces()
+                        .iter()
+                        .next()
+                        .cloned()
+                    {
+                        let surface = surface.wl_surface().clone();
+                        keyboard.set_focus(&mut state, Some(surface), 0.into());
+                    };
+                }
+                _ => {}
+            },
+            _ => (),
+        });
+
+        match status {
+            PumpStatus::Continue => (),
+            PumpStatus::Exit(_) => return Ok(()),
+        };
+
+        backend.bind().unwrap();
+
+        let size = backend.window_size();
+        let damage = Rectangle::from_size(size);
+
+        let elements = state
+            .xdg_shell_state
+            .toplevel_surfaces()
+            .iter()
+            .flat_map(|surface| {
+                render_elements_from_surface_tree(
+                    backend.renderer(),
+                    surface.wl_surface(),
+                    (0, 0),
+                    1.0,
+                    1.0,
+                    Kind::Unspecified,
+                )
+            })
+            .collect::<Vec<WaylandSurfaceRenderElement<GlesRenderer>>>();
+
+        let mut frame = backend
+            .renderer()
+            .render(size, Transform::Flipped180)
+            .unwrap();
+        frame
+            .clear(Color32F::new(0.1, 0.0, 0.0, 1.0), &[damage])
+            .unwrap();
+        draw_render_elements(&mut frame, 1.0, &elements, &[damage]).unwrap();
+        // We rely on the nested compositor to do the sync for us
+        let _ = frame.finish().unwrap();
+
+        for surface in state.xdg_shell_state.toplevel_surfaces() {
+            send_frames_surface_tree(
+                surface.wl_surface(),
+                start_time.elapsed().as_millis() as u32,
+            );
+        }
+
+        if let Some(stream) = listener.accept()? {
+            println!("Got a client: {:?}", stream);
+
+            let client = display
+                .handle()
+                .insert_client(stream, Arc::new(ClientState::default()))
+                .unwrap();
+            clients.push(client);
+        }
+
+        display.dispatch_clients(&mut state)?;
+        display.flush_clients()?;
+
+        // It is important that all events on the display have been dispatched and flushed to clients before
+        // swapping buffers because this operation may block.
+        backend.submit(Some(&[damage])).unwrap();
+    }
 }
 
 pub fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
@@ -197,182 +316,9 @@ impl ClientData for ClientState {
     }
 }
 
-impl OutputHandler for State {}
-
 // Macros used to delegate protocol handling to types in the app state.
-delegate_xdg_shell!(State);
-delegate_compositor!(State);
-delegate_shm!(State);
-delegate_seat!(State);
-delegate_data_device!(State);
-delegate_output!(State);
-
-impl PolarBearCompositor {
-    pub fn build(app: &AndroidApp) -> Result<PolarBearCompositor, Box<dyn Error>> {
-        let display = Display::new()?;
-        let dh = display.handle();
-
-        let mut seat_state = SeatState::new();
-        let mut seat = seat_state.new_wl_seat(&dh, "Polar Bear");
-
-        let listener = bind_socket()?;
-        let clients = Arc::new(Mutex::new(Vec::new()));
-
-        let start_time = Instant::now();
-
-        // Key repeat rate and delay are in milliseconds: https://wayland-book.com/seat/keyboard.html
-        let keyboard = seat.add_keyboard(Default::default(), 1000, 200).unwrap();
-        let touch = seat.add_touch();
-
-        let native_window = app.native_window().pb_expect("Failed to get ANativeWindow");
-        let display_width = native_window.width();
-        let display_height = native_window.height();
-        let size = (display_width, display_height);
-        // Create the Output with given name and physical properties.
-        let output = Output::new(
-            "Polar Bear Wayland Compositor".into(), // the name of this output,
-            PhysicalProperties {
-                size: size.into(),                 // dimensions (width, height) in mm
-                subpixel: Subpixel::HorizontalRgb, // subpixel information
-                make: "Polar Bear".into(),         // make of the monitor
-                model: config::VERSION.into(),     // model of the monitor
-            },
-        );
-
-        // create a global, if you want to advertise it to clients
-        let _global = output.create_global::<State>(
-            &dh, // the display
-        ); // you can drop the global, if you never intend to destroy it.
-           // Now you can configure it
-        output.change_current_state(
-            Some(Mode {
-                size: size.into(),
-                refresh: 60000,
-            }), // the resolution mode,
-            Some(Transform::Normal), // global screen transformation
-            Some(Scale::Integer(1)), // global screen scaling factor
-            Some((0, 0).into()),     // output position
-        );
-        // set the preferred mode
-        output.set_preferred(Mode {
-            size: size.into(),
-            refresh: 60000,
-        });
-
-        let state = State {
-            compositor_state: CompositorState::new::<State>(&dh),
-            xdg_shell_state: XdgShellState::new::<State>(&dh),
-            shm_state: ShmState::new::<State>(&dh, vec![]),
-            data_device_state: DataDeviceState::new::<State>(&dh),
-            seat_state,
-            size,
-        };
-
-        Ok(PolarBearCompositor {
-            state,
-            listener,
-            clients,
-            start_time,
-            display,
-            seat,
-            keyboard,
-            touch,
-            output,
-        })
-    }
-
-    pub fn get_surface(&mut self) -> Option<WlSurface> {
-        if let Some(surface) = self
-            .state
-            .xdg_shell_state
-            .toplevel_surfaces()
-            .iter()
-            .next()
-            .cloned()
-        {
-            let surface = surface.wl_surface().clone();
-            return Some(surface);
-        };
-        return None;
-    }
-
-    pub fn draw(
-        &mut self,
-        mut renderer: PolarBearRenderer,
-        size: Vec2,
-    ) -> Result<(), Box<dyn Error>> {
-        let size = Size::from((size.x as i32, size.y as i32));
-
-        let damage = Rectangle::from_size(size);
-
-        let elements = self
-            .state
-            .xdg_shell_state
-            .toplevel_surfaces()
-            .iter()
-            .flat_map(|surface| {
-                render_elements_from_surface_tree(
-                    &mut renderer,
-                    surface.wl_surface(),
-                    (0, 0),
-                    1.0,
-                    1.0,
-                    Kind::Unspecified,
-                )
-            })
-            .collect::<Vec<WaylandSurfaceRenderElement<PolarBearRenderer>>>();
-
-        let mut frame = renderer.render(size, Transform::Flipped180).unwrap();
-        frame
-            .clear(Color32F::new(0.1, 0.0, 0.0, 1.0), &[damage])
-            .unwrap();
-        draw_render_elements(&mut frame, 1.0, &elements, &[damage]).unwrap();
-        let _ = frame.finish().unwrap();
-
-        for surface in self.state.xdg_shell_state.toplevel_surfaces() {
-            send_frames_surface_tree(
-                surface.wl_surface(),
-                self.start_time.elapsed().as_millis() as u32,
-            );
-        }
-
-        if let Some(stream) = self.listener.accept()? {
-            println!("Got a client: {:?}", stream);
-
-            let client = self
-                .display
-                .handle()
-                .insert_client(stream, Arc::new(ClientState::default()))
-                .unwrap();
-            self.clients.lock().unwrap().push(client);
-        }
-
-        let state = &mut self.state;
-        self.display.dispatch_clients(state)?;
-        self.display.flush_clients()?;
-
-        // let mut damage = match damage {
-        //     Some(damage) if self.damage_tracking && !damage.is_empty() => {
-        //         let bind_size = self
-        //             .bind_size
-        //             .expect("submitting without ever binding the renderer.");
-        //         let damage = damage
-        //             .iter()
-        //             .map(|rect| {
-        //                 Rectangle::new(
-        //                     (rect.loc.x, bind_size.h - rect.loc.y - rect.size.h).into(),
-        //                     rect.size,
-        //                 )
-        //             })
-        //             .collect::<Vec<_>>();
-        //         Some(damage)
-        //     }
-        //     _ => None,
-        // };
-
-        // // Request frame callback.
-        // self.window.pre_present_notify();
-        // self.egl_surface.swap_buffers(damage.as_deref_mut())?;
-        Ok(())
-    }
-}
+delegate_xdg_shell!(App);
+delegate_compositor!(App);
+delegate_shm!(App);
+delegate_seat!(App);
+delegate_data_device!(App);
