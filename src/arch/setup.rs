@@ -9,14 +9,16 @@ use crate::{
 use super::process::ArchProcess;
 
 pub struct SetupOptions {
-    pub package_group: String,
+    pub install_packages: String,
+    pub checking_command: String,
     pub launch_command: String,
     pub username: String,
 }
 
 pub fn setup(app: &PolarBearApp, options: SetupOptions) {
     let SetupOptions {
-        package_group,
+        install_packages,
+        checking_command,
         launch_command,
         username,
     } = options;
@@ -26,6 +28,11 @@ pub fn setup(app: &PolarBearApp, options: SetupOptions) {
     };
 
     ArchProcess::exec("uname -a").with_log(log);
+
+    // Fix "/tmp" can be written by others
+    ArchProcess::exec("chmod 700 /tmp")
+        .wait()
+        .pb_expect("chmod 700 /tmp failed");
 
     loop {
         if !ArchProcess::exec(&format!("id {username}"))
@@ -39,10 +46,9 @@ pub fn setup(app: &PolarBearApp, options: SetupOptions) {
                 .pb_expect(&format!("{} failed", command));
         }
 
-        let install_command = format!("pacman -Qg {}", package_group);
-        let installed = ArchProcess::exec(&install_command)
+        let installed = ArchProcess::exec(&checking_command)
             .wait()
-            .pb_expect(&format!("{} failed", install_command))
+            .pb_expect("Failed to check whether the installation target is installed")
             .success();
         if installed {
             match PolarBearCompositor::build(&app.android_app) {
@@ -51,12 +57,12 @@ pub fn setup(app: &PolarBearApp, options: SetupOptions) {
                         app.shared.lock().unwrap().compositor.replace(compositor);
                     }
                     let full_launch_command = &format!(
-                        "HOME=/home/teddy USER=teddy XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} WAYLAND_DEBUG=client {} 2>&1",
+                        "HOME=/home/teddy USER=teddy XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} XDG_SESSION_TYPE=wayland {} 2>&1",
                         config::XDG_RUNTIME_DIR,
                         config::WAYLAND_SOCKET_NAME,
                         launch_command
                     );
-                    ArchProcess::exec_as(&full_launch_command, &username).with_log(log);
+                    ArchProcess::exec(&full_launch_command).with_log(log);
                 }
                 Err(e) => {
                     log(log_format(
@@ -70,7 +76,7 @@ pub fn setup(app: &PolarBearApp, options: SetupOptions) {
             ArchProcess::exec("rm /var/lib/pacman/db.lck");
             ArchProcess::exec(&format!(
                 "stdbuf -oL pacman -Syu {} --noconfirm --noprogressbar",
-                package_group
+                install_packages
             ))
             .with_log(log);
         }

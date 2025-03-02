@@ -3,6 +3,7 @@
     "archlinux",
     "eframe",
     "egui",
+    "Fourcc",
     "PROOT",
     "Wgpu",
     "winit",

@@ -79,16 +79,20 @@ impl PolarBearApp {
                 scaffold(&cloned_app);
 
                 // Step 2. Install dependencies if not already installed
-                let package_group = "plasma".to_string();
                 // let launch_command =
-                //     "/usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
-                let launch_command = "weston --fullscreen --scale=2".to_string();
+                //     "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
+                // let launch_command = "weston --fullscreen --scale=2".to_string();
+                // let launch_command = "Hyprland".to_string();
+                let launch_command =
+                    "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
+                        .to_string();
 
                 setup(
                     &cloned_app,
                     SetupOptions {
                         username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-                        package_group,
+                        checking_command: "pacman -Qg lxqt && pacman -Q breeze-icons".to_string(),
+                        install_packages: "lxqt breeze-icons".to_string(),
                         launch_command,
                     },
                 );
