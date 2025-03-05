@@ -1,5 +1,5 @@
 use crate::{
-    app::{compositor::PolarBearCompositor, run::PolarBearApp},
+    app::{compositor::PolarBearCompositor, polar_bear::CloneableAppProperties},
     utils::{
         config,
         logging::{log_format, PolarBearExpectation},
@@ -15,7 +15,7 @@ pub struct SetupOptions {
     pub username: String,
 }
 
-pub fn setup(app: &PolarBearApp, options: SetupOptions) {
+pub fn setup(app: &CloneableAppProperties, options: SetupOptions) {
     let SetupOptions {
         install_packages,
         checking_command,
@@ -24,7 +24,7 @@ pub fn setup(app: &PolarBearApp, options: SetupOptions) {
     } = options;
 
     let log = |it| {
-        app.shared.lock().unwrap().log(it);
+        app.inner.lock().unwrap().log(it);
     };
 
     ArchProcess::exec("uname -a").with_log(log);
@@ -54,7 +54,7 @@ pub fn setup(app: &PolarBearApp, options: SetupOptions) {
             match PolarBearCompositor::build(&app.android_app) {
                 Ok(compositor) => {
                     {
-                        app.shared.lock().unwrap().compositor.replace(compositor);
+                        app.inner.lock().unwrap().compositor.replace(compositor);
                     }
                     let full_launch_command = &format!(
                         "HOME=/home/teddy USER=teddy XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} XDG_SESSION_TYPE=wayland {} 2>&1",

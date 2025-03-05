@@ -1,14 +1,14 @@
 use crate::{
-    app::run::PolarBearApp,
+    app::polar_bear::CloneableAppProperties,
     utils::{application_context::get_application_context, config, logging::PolarBearExpectation},
 };
 use std::fs;
 use tar::Archive;
 use xz2::read::XzDecoder;
 
-pub fn scaffold(app: &PolarBearApp) {
+pub fn scaffold(app: &CloneableAppProperties) {
     let log = |it| {
-        app.shared.lock().unwrap().log(it);
+        app.inner.lock().unwrap().log(it);
     };
 
     let context = get_application_context().pb_expect("Failed to get application context");

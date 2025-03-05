@@ -18,187 +18,131 @@
 //! The other types in this module are the instances of the associated types of these
 //! two traits for the winit backend.
 
-use std::io::Error as IoError;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
-use crate::app::input::*;
-use calloop::generic::Generic;
-use calloop::PostAction;
-use smithay::reexports::calloop::{EventSource, Readiness, Token};
-use winit::platform::pump_events::PumpStatus;
-use winit::platform::scancode::PhysicalKeyExtScancode;
-use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use crate::utils::logging::PolarBearExpectation;
+use smithay::backend::egl::native::{EGLNativeDisplay, EGLNativeSurface};
+use winit::raw_window_handle::{AndroidNdkWindowHandle, HasWindowHandle, RawWindowHandle};
 use winit::{
-    application::ApplicationHandler,
-    dpi::LogicalSize,
-    event::{ElementState, Touch, TouchPhase, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window as WinitWindow, WindowAttributes, WindowId},
+    event_loop::EventLoop,
+    window::{Window as WinitWindow, WindowAttributes},
 };
 
 use smithay::{
+    backend::renderer::Renderer,
     backend::{
         egl::{
             context::{GlAttributes, PixelFormatRequirements},
             display::EGLDisplay,
             native, EGLContext, EGLSurface, Error as EGLError,
         },
-        input::InputEvent,
         renderer::{
             gles::{GlesError, GlesRenderer},
             Bind,
         },
     },
-    backend::{input::*, renderer::Renderer},
-    utils::{Clock, Monotonic, Physical, Rectangle, Size},
+    utils::{Physical, Rectangle, Size},
 };
 
-/// Create a new [`WinitGraphicsBackend`], which implements the
-/// [`Renderer`] trait and a corresponding [`WinitEventLoop`].
-pub fn init<R>() -> Result<(WinitGraphicsBackend<R>, WinitEventLoop), Error>
-where
-    R: From<GlesRenderer> + Bind<Rc<EGLSurface>>,
-    smithay::backend::SwapBuffersError: From<<R as Renderer>::Error>,
-{
-    init_from_attributes(
-        WinitWindow::default_attributes()
-            .with_inner_size(LogicalSize::new(1280.0, 800.0))
-            .with_title("Smithay")
-            .with_visible(true),
-    )
+pub struct PolarBearSurface {
+    handle: AndroidNdkWindowHandle,
 }
 
-/// Create a new [`WinitGraphicsBackend`], which implements the [`Renderer`]
-/// trait, from a given [`WindowAttributes`] struct and a corresponding
-/// [`WinitEventLoop`].
-pub fn init_from_attributes<R>(
-    attributes: WindowAttributes,
-) -> Result<(WinitGraphicsBackend<R>, WinitEventLoop), Error>
-where
-    R: From<GlesRenderer> + Bind<Rc<EGLSurface>>,
-    smithay::backend::SwapBuffersError: From<<R as Renderer>::Error>,
-{
-    init_from_attributes_with_gl_attr(
-        attributes,
-        GlAttributes {
-            version: (3, 0),
-            profile: None,
-            debug: cfg!(debug_assertions),
-            vsync: false,
-        },
-    )
+unsafe impl Send for PolarBearSurface {}
+
+unsafe impl EGLNativeSurface for PolarBearSurface {
+    unsafe fn create(
+        &self,
+        _display: &Arc<smithay::backend::egl::display::EGLDisplayHandle>,
+        config_id: smithay::backend::egl::ffi::egl::types::EGLConfig,
+    ) -> Result<*const std::os::raw::c_void, smithay::backend::egl::EGLError> {
+        let native = self.handle.a_native_window.as_ptr() as *mut std::ffi::c_void;
+        let surface = smithay::backend::egl::ffi::egl::CreateWindowSurface(
+            self.handle.a_native_window.as_ptr(),
+            config_id,
+            native,
+            std::ptr::null(),
+        );
+        assert!(!surface.is_null());
+        Ok(surface)
+    }
+}
+
+impl EGLNativeDisplay for PolarBearSurface {
+    fn supported_platforms(&self) -> Vec<native::EGLPlatform<'_>> {
+        vec![]
+    }
 }
 
 /// Create a new [`WinitGraphicsBackend`], which implements the [`Renderer`]
 /// trait, from a given [`WindowAttributes`] struct, as well as given
 /// [`GlAttributes`] for further customization of the rendering pipeline and a
 /// corresponding [`WinitEventLoop`].
-pub fn init_from_attributes_with_gl_attr<R>(
-    attributes: WindowAttributes,
-    gl_attributes: GlAttributes,
-) -> Result<(WinitGraphicsBackend<R>, WinitEventLoop), Error>
-where
-    R: From<GlesRenderer> + Bind<Rc<EGLSurface>>,
-    smithay::backend::SwapBuffersError: From<<R as Renderer>::Error>,
-{
-    let event_loop = EventLoop::builder()
-        .build()
-        .map_err(Error::EventLoopCreation)?;
-
-    // TODO: Create window in `resumed`?
+pub fn bind(event_loop: &EventLoop<()>) -> WinitGraphicsBackend<GlesRenderer> {
     #[allow(deprecated)]
     let window = Arc::new(
         event_loop
-            .create_window(attributes)
-            .map_err(Error::WindowCreation)?,
+            .create_window(WindowAttributes::default())
+            .pb_expect("Failed to create window"),
     );
 
-    let (display, context, surface, is_x11) = {
-        let display = unsafe { EGLDisplay::new(window.clone())? };
+    let (display, context, surface) = match window.window_handle().map(|handle| handle.as_raw()) {
+        Ok(RawWindowHandle::AndroidNdk(handle)) => {
+            let display = unsafe { EGLDisplay::new(PolarBearSurface { handle }) }
+                .pb_expect("Failed to create EGLDisplay");
 
-        let context = EGLContext::new_with_config(
-            &display,
-            gl_attributes,
-            PixelFormatRequirements::_10_bit(),
-        )
-        .or_else(|_| {
-            EGLContext::new_with_config(&display, gl_attributes, PixelFormatRequirements::_8_bit())
-        })?;
-
-        let (surface, is_x11) = match window.window_handle().map(|handle| handle.as_raw()) {
-            Ok(RawWindowHandle::Wayland(handle)) => {
-                let size = window.inner_size();
-                let surface = unsafe {
-                    wegl::WlEglSurface::new_from_raw(
-                        handle.surface.as_ptr() as *mut _,
-                        size.width as i32,
-                        size.height as i32,
-                    )
-                }
-                .map_err(|err| Error::Surface(err.into()))?;
-                unsafe {
-                    (
-                        EGLSurface::new(
-                            &display,
-                            context.pixel_format().unwrap(),
-                            context.config_id(),
-                            surface,
-                        )
-                        .map_err(EGLError::CreationFailed)?,
-                        false,
-                    )
-                }
-            }
-            Ok(RawWindowHandle::Xlib(handle)) => unsafe {
-                (
-                    EGLSurface::new(
-                        &display,
-                        context.pixel_format().unwrap(),
-                        context.config_id(),
-                        native::XlibWindow(handle.window),
-                    )
-                    .map_err(EGLError::CreationFailed)?,
-                    true,
+            let gl_attributes = GlAttributes {
+                version: (3, 0),
+                profile: None,
+                debug: cfg!(debug_assertions),
+                vsync: false,
+            };
+            let context = EGLContext::new_with_config(
+                &display,
+                gl_attributes,
+                PixelFormatRequirements::_10_bit(),
+            )
+            .or_else(|_| {
+                EGLContext::new_with_config(
+                    &display,
+                    gl_attributes,
+                    PixelFormatRequirements::_8_bit(),
                 )
-            },
-            _ => panic!("only running on Wayland or with Xlib is supported"),
-        };
+            })
+            .pb_expect("Failed to create EGLContext");
 
-        let _ = context.unbind();
-        (display, context, surface, is_x11)
+            let surface = unsafe {
+                EGLSurface::new(
+                    &display,
+                    context.pixel_format().unwrap(),
+                    context.config_id(),
+                    PolarBearSurface { handle },
+                )
+                .pb_expect("Failed to create EGLSurface")
+            };
+
+            let _ = context.unbind();
+            (display, context, surface)
+        }
+        _ => panic!("only running on Wayland or with Xlib is supported"),
     };
 
     let egl = Rc::new(surface);
-    let renderer = unsafe { GlesRenderer::new(context)?.into() };
+    let renderer =
+        unsafe { GlesRenderer::new(context) }.pb_expect("Failed to create GLES Renderer");
     let damage_tracking = display.supports_damage();
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-    let event_loop = Generic::new(event_loop, Interest::READ, calloop::Mode::Level);
 
-    Ok((
-        WinitGraphicsBackend {
-            window: window.clone(),
-            _display: display,
-            egl_surface: egl,
-            damage_tracking,
-            bind_size: None,
-            renderer,
-        },
-        WinitEventLoop {
-            inner: WinitEventLoopInner {
-                scale_factor: window.scale_factor(),
-                clock: Clock::<Monotonic>::new(),
-                key_counter: 0,
-                window,
-                is_x11,
-            },
-            fake_token: None,
-            event_loop,
-            pending_events: Vec::new(),
-        },
-    ))
+    WinitGraphicsBackend {
+        window: window.clone(),
+        _display: display,
+        egl_surface: egl,
+        damage_tracking,
+        bind_size: None,
+        renderer,
+    }
 }
 
 /// Errors thrown by the `winit` backends
@@ -327,360 +271,4 @@ where
         self.egl_surface.swap_buffers(damage.as_deref_mut())?;
         Ok(())
     }
-}
-
-#[derive(Debug)]
-struct WinitEventLoopInner {
-    window: Arc<WinitWindow>,
-    clock: Clock<Monotonic>,
-    key_counter: u32,
-    is_x11: bool,
-    scale_factor: f64,
-}
-
-/// Abstracted event loop of a [`WinitWindow`].
-///
-/// You can register it into `calloop` or call
-/// [`dispatch_new_events`](WinitEventLoop::dispatch_new_events) periodically to receive any
-/// events.
-#[derive(Debug)]
-pub struct WinitEventLoop {
-    inner: WinitEventLoopInner,
-    fake_token: Option<Token>,
-    pending_events: Vec<WinitEvent>,
-    event_loop: Generic<EventLoop<()>>,
-}
-
-impl WinitEventLoop {
-    /// Processes new events of the underlying event loop and calls the provided callback.
-    ///
-    /// You need to periodically call this function to keep the underlying event loop and
-    /// [`WinitWindow`] active. Otherwise the window may not respond to user interaction.
-    ///
-    /// Returns an error if the [`WinitWindow`] the window has been closed. Calling
-    /// `dispatch_new_events` again after the [`WinitWindow`] has been closed is considered an
-    /// application error and unspecified behaviour may occur.
-    ///
-    /// The linked [`WinitGraphicsBackend`] will error with a lost context and should
-    /// not be used anymore as well.
-    pub fn dispatch_new_events<F>(&mut self, callback: F) -> PumpStatus
-    where
-        F: FnMut(WinitEvent),
-    {
-        // SAFETY: we don't drop event loop ourselves.
-        let event_loop = unsafe { self.event_loop.get_mut() };
-
-        event_loop.pump_app_events(
-            Some(Duration::ZERO),
-            &mut WinitEventLoopApp {
-                inner: &mut self.inner,
-                callback,
-            },
-        )
-    }
-}
-
-struct WinitEventLoopApp<'a, F: FnMut(WinitEvent)> {
-    inner: &'a mut WinitEventLoopInner,
-    callback: F,
-}
-
-impl<F: FnMut(WinitEvent)> WinitEventLoopApp<'_, F> {
-    fn timestamp(&self) -> u64 {
-        self.inner.clock.now().as_micros()
-    }
-}
-
-impl<F: FnMut(WinitEvent)> ApplicationHandler for WinitEventLoopApp<'_, F> {
-    fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
-        (self.callback)(WinitEvent::Input(InputEvent::DeviceAdded {
-            device: WinitVirtualDevice,
-        }));
-    }
-
-    fn window_event(
-        &mut self,
-        _event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
-        event: WindowEvent,
-    ) {
-        match event {
-            WindowEvent::Resized(size) => {
-                let (w, h): (i32, i32) = size.into();
-
-                (self.callback)(WinitEvent::Resized {
-                    size: (w, h).into(),
-                    scale_factor: self.inner.scale_factor,
-                });
-            }
-            WindowEvent::ScaleFactorChanged {
-                scale_factor: new_scale_factor,
-                ..
-            } => {
-                self.inner.scale_factor = new_scale_factor;
-                let (w, h): (i32, i32) = self.inner.window.inner_size().into();
-                (self.callback)(WinitEvent::Resized {
-                    size: (w, h).into(),
-                    scale_factor: self.inner.scale_factor,
-                });
-            }
-            WindowEvent::RedrawRequested => {
-                (self.callback)(WinitEvent::Redraw);
-            }
-            WindowEvent::CloseRequested => {
-                (self.callback)(WinitEvent::CloseRequested);
-            }
-            WindowEvent::Focused(focused) => {
-                (self.callback)(WinitEvent::Focus(focused));
-            }
-            WindowEvent::KeyboardInput {
-                event,
-                is_synthetic,
-                ..
-            } if !is_synthetic && !event.repeat => {
-                match event.state {
-                    ElementState::Pressed => self.inner.key_counter += 1,
-                    ElementState::Released => {
-                        self.inner.key_counter = self.inner.key_counter.saturating_sub(1);
-                    }
-                };
-
-                let scancode = event.physical_key.to_scancode().unwrap_or(0);
-                let event = InputEvent::Keyboard {
-                    event: WinitKeyboardInputEvent {
-                        time: self.timestamp(),
-                        key: scancode,
-                        count: self.inner.key_counter,
-                        state: event.state,
-                    },
-                };
-                (self.callback)(WinitEvent::Input(event));
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                let size = self.inner.window.inner_size();
-                let x = position.x / size.width as f64;
-                let y = position.y / size.height as f64;
-                let event = InputEvent::PointerMotionAbsolute {
-                    event: WinitMouseMovedEvent {
-                        time: self.timestamp(),
-                        position: RelativePosition::new(x, y),
-                        global_position: position,
-                    },
-                };
-                (self.callback)(WinitEvent::Input(event));
-            }
-            WindowEvent::MouseWheel { delta, .. } => {
-                let event = InputEvent::PointerAxis {
-                    event: WinitMouseWheelEvent {
-                        time: self.timestamp(),
-                        delta,
-                    },
-                };
-                (self.callback)(WinitEvent::Input(event));
-            }
-            WindowEvent::MouseInput { state, button, .. } => {
-                let event = InputEvent::PointerButton {
-                    event: WinitMouseInputEvent {
-                        time: self.timestamp(),
-                        button,
-                        state,
-                        is_x11: self.inner.is_x11,
-                    },
-                };
-                (self.callback)(WinitEvent::Input(event));
-            }
-            WindowEvent::Touch(Touch {
-                phase: TouchPhase::Started,
-                location,
-                id,
-                ..
-            }) => {
-                let size = self.inner.window.inner_size();
-                let x = location.x / size.width as f64;
-                let y = location.y / size.width as f64;
-                let event = InputEvent::TouchDown {
-                    event: WinitTouchStartedEvent {
-                        time: self.timestamp(),
-                        global_position: location,
-                        position: RelativePosition::new(x, y),
-                        id,
-                    },
-                };
-
-                (self.callback)(WinitEvent::Input(event));
-            }
-            WindowEvent::Touch(Touch {
-                phase: TouchPhase::Moved,
-                location,
-                id,
-                ..
-            }) => {
-                let size = self.inner.window.inner_size();
-                let x = location.x / size.width as f64;
-                let y = location.y / size.width as f64;
-                let event = InputEvent::TouchMotion {
-                    event: WinitTouchMovedEvent {
-                        time: self.timestamp(),
-                        position: RelativePosition::new(x, y),
-                        global_position: location,
-                        id,
-                    },
-                };
-
-                (self.callback)(WinitEvent::Input(event));
-            }
-
-            WindowEvent::Touch(Touch {
-                phase: TouchPhase::Ended,
-                location,
-                id,
-                ..
-            }) => {
-                let size = self.inner.window.inner_size();
-                let x = location.x / size.width as f64;
-                let y = location.y / size.width as f64;
-                let event = InputEvent::TouchMotion {
-                    event: WinitTouchMovedEvent {
-                        time: self.timestamp(),
-                        position: RelativePosition::new(x, y),
-                        global_position: location,
-                        id,
-                    },
-                };
-                (self.callback)(WinitEvent::Input(event));
-
-                let event = InputEvent::TouchUp {
-                    event: WinitTouchEndedEvent {
-                        time: self.timestamp(),
-                        id,
-                    },
-                };
-
-                (self.callback)(WinitEvent::Input(event));
-            }
-
-            WindowEvent::Touch(Touch {
-                phase: TouchPhase::Cancelled,
-                id,
-                ..
-            }) => {
-                let event = InputEvent::TouchCancel {
-                    event: WinitTouchCancelledEvent {
-                        time: self.timestamp(),
-                        id,
-                    },
-                };
-                (self.callback)(WinitEvent::Input(event));
-            }
-            WindowEvent::DroppedFile(_)
-            | WindowEvent::Destroyed
-            | WindowEvent::CursorEntered { .. }
-            | WindowEvent::AxisMotion { .. }
-            | WindowEvent::CursorLeft { .. }
-            | WindowEvent::ModifiersChanged(_)
-            | WindowEvent::KeyboardInput { .. }
-            | WindowEvent::HoveredFile(_)
-            | WindowEvent::HoveredFileCancelled
-            | WindowEvent::Ime(_)
-            | WindowEvent::Moved(_)
-            | WindowEvent::Occluded(_)
-            | WindowEvent::DoubleTapGesture { .. }
-            | WindowEvent::ThemeChanged(_)
-            | WindowEvent::PinchGesture { .. }
-            | WindowEvent::TouchpadPressure { .. }
-            | WindowEvent::RotationGesture { .. }
-            | WindowEvent::PanGesture { .. }
-            | WindowEvent::ActivationTokenDone { .. } => (),
-        }
-    }
-}
-
-impl EventSource for WinitEventLoop {
-    type Event = WinitEvent;
-    type Metadata = ();
-    type Ret = ();
-    type Error = IoError;
-
-    const NEEDS_EXTRA_LIFECYCLE_EVENTS: bool = true;
-
-    fn before_sleep(&mut self) -> calloop::Result<Option<(calloop::Readiness, calloop::Token)>> {
-        let mut pending_events = std::mem::take(&mut self.pending_events);
-        let callback = |event| {
-            pending_events.push(event);
-        };
-        // NOTE: drain winit's event loop before going to sleep, so we can
-        // wake up if other thread has woken up underlying winit loop, like other
-        // event queue got dispatched during that.
-        self.dispatch_new_events(callback);
-        self.pending_events = pending_events;
-        if self.pending_events.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some((Readiness::EMPTY, self.fake_token.unwrap())))
-        }
-    }
-
-    fn process_events<F>(
-        &mut self,
-        _readiness: calloop::Readiness,
-        _token: calloop::Token,
-        mut callback: F,
-    ) -> Result<PostAction, Self::Error>
-    where
-        F: FnMut(Self::Event, &mut Self::Metadata) -> Self::Ret,
-    {
-        let mut callback = |event| callback(event, &mut ());
-        for event in self.pending_events.drain(..) {
-            callback(event);
-        }
-        Ok(match self.dispatch_new_events(callback) {
-            PumpStatus::Continue => PostAction::Continue,
-            PumpStatus::Exit(_) => PostAction::Remove,
-        })
-    }
-
-    fn register(
-        &mut self,
-        poll: &mut calloop::Poll,
-        token_factory: &mut calloop::TokenFactory,
-    ) -> calloop::Result<()> {
-        self.fake_token = Some(token_factory.token());
-        self.event_loop.register(poll, token_factory)
-    }
-
-    fn reregister(
-        &mut self,
-        poll: &mut calloop::Poll,
-        token_factory: &mut calloop::TokenFactory,
-    ) -> calloop::Result<()> {
-        self.event_loop.register(poll, token_factory)
-    }
-
-    fn unregister(&mut self, poll: &mut calloop::Poll) -> calloop::Result<()> {
-        self.event_loop.unregister(poll)
-    }
-}
-
-/// Specific events generated by Winit
-#[derive(Debug)]
-pub enum WinitEvent {
-    /// The window has been resized
-    Resized {
-        /// The new physical size (in pixels)
-        size: Size<i32, Physical>,
-        /// The new scale factor
-        scale_factor: f64,
-    },
-
-    /// The focus state of the window changed
-    Focus(bool),
-
-    /// An input event occurred.
-    Input(InputEvent<WinitInput>),
-
-    /// The user requested to close the window.
-    CloseRequested,
-
-    /// A redraw was requested
-    Redraw,
 }
