@@ -18,50 +18,47 @@
 //! The other types in this module are the instances of the associated types of these
 //! two traits for the winit backend.
 
-use std::rc::Rc;
-use std::sync::Arc;
-
 use crate::utils::logging::PolarBearExpectation;
-use smithay::backend::egl::native::{EGLNativeDisplay, EGLNativeSurface};
-use winit::raw_window_handle::{AndroidNdkWindowHandle, HasWindowHandle, RawWindowHandle};
-use winit::{
-    event_loop::EventLoop,
-    window::{Window as WinitWindow, WindowAttributes},
-};
-
+use khronos_egl::{Config, DynamicInstance};
 use smithay::{
-    backend::renderer::Renderer,
     backend::{
         egl::{
             context::{GlAttributes, PixelFormatRequirements},
             display::EGLDisplay,
-            native, EGLContext, EGLSurface, Error as EGLError,
+            native::EGLNativeSurface,
+            EGLContext, EGLSurface, Error as EGLError,
         },
         renderer::{
             gles::{GlesError, GlesRenderer},
-            Bind,
+            Bind, Renderer,
         },
     },
     utils::{Physical, Rectangle, Size},
 };
+use std::ffi::c_void;
+use std::ptr;
+use std::rc::Rc;
+use std::sync::Arc;
+use winit::event_loop::ActiveEventLoop;
+use winit::raw_window_handle::{AndroidNdkWindowHandle, HasWindowHandle, RawWindowHandle};
+use winit::window::{Window as WinitWindow, WindowAttributes};
 
-pub struct PolarBearSurface {
+pub struct AndroidNativeSurface {
     handle: AndroidNdkWindowHandle,
 }
 
-unsafe impl Send for PolarBearSurface {}
+unsafe impl Send for AndroidNativeSurface {}
 
-unsafe impl EGLNativeSurface for PolarBearSurface {
+unsafe impl EGLNativeSurface for AndroidNativeSurface {
     unsafe fn create(
         &self,
-        _display: &Arc<smithay::backend::egl::display::EGLDisplayHandle>,
+        display: &Arc<smithay::backend::egl::display::EGLDisplayHandle>,
         config_id: smithay::backend::egl::ffi::egl::types::EGLConfig,
     ) -> Result<*const std::os::raw::c_void, smithay::backend::egl::EGLError> {
-        let native = self.handle.a_native_window.as_ptr() as *mut std::ffi::c_void;
         let surface = smithay::backend::egl::ffi::egl::CreateWindowSurface(
-            self.handle.a_native_window.as_ptr(),
+            display.handle,
             config_id,
-            native,
+            self.handle.a_native_window.as_ptr(),
             std::ptr::null(),
         );
         assert!(!surface.is_null());
@@ -69,17 +66,44 @@ unsafe impl EGLNativeSurface for PolarBearSurface {
     }
 }
 
-impl EGLNativeDisplay for PolarBearSurface {
-    fn supported_platforms(&self) -> Vec<native::EGLPlatform<'_>> {
-        vec![]
+fn create_egl_display(
+    handle: AndroidNdkWindowHandle,
+) -> Result<EGLDisplay, Box<dyn std::error::Error>> {
+    // Load the EGL library
+    let lib = unsafe { libloading::Library::new("libEGL.so") }?;
+    let egl = unsafe { DynamicInstance::<khronos_egl::EGL1_4>::load_required_from(lib) }?;
+
+    // Get the display
+    let display = unsafe { egl.get_display(khronos_egl::DEFAULT_DISPLAY) }
+        .pb_expect("Failed to get EGL display");
+
+    // Initialize the display
+    let (major, minor) = egl.initialize(display)?;
+
+    // Choose an EGL configuration
+    let config_attribs = [khronos_egl::NONE];
+    let config = egl
+        .choose_first_config(display, &config_attribs)
+        .pb_expect("Failed to choose EGL config")
+        .pb_expect("No suitable EGL config found");
+
+    // Create the EGLDisplay from raw pointers
+    let egl_display = unsafe {
+        EGLDisplay::from_raw(
+            display.as_ptr() as *mut c_void,
+            config.as_ptr() as *mut c_void,
+        )
     }
+    .pb_expect("Failed to create EGL display");
+
+    Ok(egl_display)
 }
 
 /// Create a new [`WinitGraphicsBackend`], which implements the [`Renderer`]
 /// trait, from a given [`WindowAttributes`] struct, as well as given
 /// [`GlAttributes`] for further customization of the rendering pipeline and a
 /// corresponding [`WinitEventLoop`].
-pub fn bind(event_loop: &EventLoop<()>) -> WinitGraphicsBackend<GlesRenderer> {
+pub fn bind(event_loop: &ActiveEventLoop) -> WinitGraphicsBackend<GlesRenderer> {
     #[allow(deprecated)]
     let window = Arc::new(
         event_loop
@@ -87,10 +111,16 @@ pub fn bind(event_loop: &EventLoop<()>) -> WinitGraphicsBackend<GlesRenderer> {
             .pb_expect("Failed to create window"),
     );
 
-    let (display, context, surface) = match window.window_handle().map(|handle| handle.as_raw()) {
+    let handle = window.window_handle().map(|handle| handle.as_raw());
+    let (display, context, surface) = match handle {
         Ok(RawWindowHandle::AndroidNdk(handle)) => {
-            let display = unsafe { EGLDisplay::new(PolarBearSurface { handle }) }
-                .pb_expect("Failed to create EGLDisplay");
+            let display = create_egl_display(handle);
+            let display = match display {
+                Ok(display) => display,
+                Err(error) => {
+                    panic!("Failed to create EGLDisplay: {:?}", error)
+                }
+            };
 
             let gl_attributes = GlAttributes {
                 version: (3, 0),
@@ -117,7 +147,7 @@ pub fn bind(event_loop: &EventLoop<()>) -> WinitGraphicsBackend<GlesRenderer> {
                     &display,
                     context.pixel_format().unwrap(),
                     context.config_id(),
-                    PolarBearSurface { handle },
+                    AndroidNativeSurface { handle },
                 )
                 .pb_expect("Failed to create EGLSurface")
             };
@@ -125,10 +155,11 @@ pub fn bind(event_loop: &EventLoop<()>) -> WinitGraphicsBackend<GlesRenderer> {
             let _ = context.unbind();
             (display, context, surface)
         }
-        _ => panic!("only running on Wayland or with Xlib is supported"),
+        Ok(platform) => panic!("Unsupported platform: {:?}", platform),
+        Err(error) => panic!("Failed to get window handle: {:?}", error),
     };
 
-    let egl = Rc::new(surface);
+    let egl_surface = Rc::new(surface);
     let renderer =
         unsafe { GlesRenderer::new(context) }.pb_expect("Failed to create GLES Renderer");
     let damage_tracking = display.supports_damage();
@@ -138,7 +169,7 @@ pub fn bind(event_loop: &EventLoop<()>) -> WinitGraphicsBackend<GlesRenderer> {
     WinitGraphicsBackend {
         window: window.clone(),
         _display: display,
-        egl_surface: egl,
+        egl_surface,
         damage_tracking,
         bind_size: None,
         renderer,

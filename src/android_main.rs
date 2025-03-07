@@ -7,7 +7,7 @@ use winit::{
 };
 
 use crate::{
-    app::{polar_bear::PolarBearApp, winit::bind},
+    app::polar_bear::PolarBearApp,
     utils::{application_context::ApplicationContext, logging::PolarBearExpectation},
 };
 
@@ -41,6 +41,5 @@ fn android_main(android_app: AndroidApp) {
     event_loop.set_control_flow(ControlFlow::Wait);
 
     let mut app = PolarBearApp::build(android_app);
-    bind(&event_loop);
-    event_loop.run_app(&mut app);
+    event_loop.run_app(&mut app).pb_expect("Failed to run app");
 }

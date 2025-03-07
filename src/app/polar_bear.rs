@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::{panic, thread};
 
 use smithay::backend::input::{InputBackend, InputEvent, KeyboardKeyEvent};
+use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::input::keyboard::FilterResult;
 use smithay::utils::{Clock, Monotonic, Physical, Size};
 use winit::application::ApplicationHandler;
@@ -23,6 +24,7 @@ use super::input::{
     WinitTouchMovedEvent, WinitTouchStartedEvent,
 };
 use super::keymap::physicalkey_to_scancode;
+use super::winit::{bind, WinitGraphicsBackend};
 
 pub struct ImmutableAppProperties {
     pub compositor: Option<PolarBearCompositor>,
@@ -48,7 +50,7 @@ pub struct CloneableAppProperties {
 pub struct PolarBearApp {
     pub cloneable: CloneableAppProperties,
 
-    window: Option<Window>,
+    backend: Option<WinitGraphicsBackend<GlesRenderer>>,
     clock: Clock<Monotonic>,
     key_counter: u32,
     is_x11: bool,
@@ -109,7 +111,7 @@ impl PolarBearApp {
         Self {
             cloneable,
 
-            window: None,
+            backend: None,
             clock: Clock::new(),
             key_counter: 0,
             is_x11: false,
@@ -124,11 +126,8 @@ impl PolarBearApp {
 
 impl ApplicationHandler for PolarBearApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        self.window = Some(
-            event_loop
-                .create_window(Window::default_attributes())
-                .unwrap(),
-        );
+        let backend = bind(&event_loop);
+        self.backend = Some(backend);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -147,7 +146,8 @@ impl ApplicationHandler for PolarBearApp {
                 ..
             } => {
                 self.scale_factor = new_scale_factor;
-                let (w, h): (i32, i32) = self.window.as_ref().unwrap().inner_size().into();
+                let (w, h): (i32, i32) =
+                    self.backend.as_ref().unwrap().window().inner_size().into();
                 (CentralizedEvent::Resized {
                     size: (w, h).into(),
                     scale_factor: self.scale_factor,
@@ -180,7 +180,7 @@ impl ApplicationHandler for PolarBearApp {
                 (CentralizedEvent::Input(event))
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let size = self.window.as_ref().unwrap().inner_size();
+                let size = self.backend.as_ref().unwrap().window().inner_size();
                 let x = position.x / size.width as f64;
                 let y = position.y / size.height as f64;
                 let event = InputEvent::PointerMotionAbsolute {
@@ -218,7 +218,7 @@ impl ApplicationHandler for PolarBearApp {
                 id,
                 ..
             }) => {
-                let size = self.window.as_ref().unwrap().inner_size();
+                let size = self.backend.as_ref().unwrap().window().inner_size();
                 let x = location.x / size.width as f64;
                 let y = location.y / size.width as f64;
                 let event = InputEvent::TouchDown {
@@ -238,7 +238,7 @@ impl ApplicationHandler for PolarBearApp {
                 id,
                 ..
             }) => {
-                let size = self.window.as_ref().unwrap().inner_size();
+                let size = self.backend.as_ref().unwrap().window().inner_size();
                 let x = location.x / size.width as f64;
                 let y = location.y / size.width as f64;
                 let event = InputEvent::TouchMotion {
@@ -259,7 +259,7 @@ impl ApplicationHandler for PolarBearApp {
                 id,
                 ..
             }) => {
-                let size = self.window.as_ref().unwrap().inner_size();
+                let size = self.backend.as_ref().unwrap().window().inner_size();
                 let x = location.x / size.width as f64;
                 let y = location.y / size.width as f64;
                 let event = InputEvent::TouchMotion {
@@ -318,7 +318,7 @@ impl ApplicationHandler for PolarBearApp {
                 // You only need to call this if you've determined that you need to redraw in
                 // applications which do not always need to. Applications that redraw continuously
                 // can render here instead.
-                self.window.as_ref().unwrap().request_redraw();
+                self.backend.as_ref().unwrap().window().request_redraw();
             }
             CentralizedEvent::Input(event) => match event {
                 InputEvent::Keyboard { event } => {
