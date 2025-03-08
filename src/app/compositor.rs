@@ -49,14 +49,14 @@ use crate::utils::{config, logging::PolarBearExpectation, wayland::bind_socket};
 
 pub struct PolarBearCompositor {
     pub state: State,
-    display: Display<State>,
-    listener: ListeningSocket,
-    clients: Arc<Mutex<Vec<Client>>>,
+    pub display: Display<State>,
+    pub listener: ListeningSocket,
+    pub clients: Vec<Client>,
     pub start_time: Instant,
-    seat: Seat<State>,
+    pub seat: Seat<State>,
     pub keyboard: KeyboardHandle<State>,
     pub touch: TouchHandle<State>,
-    output: Output,
+    pub output: Output,
 }
 
 pub struct State {
@@ -206,7 +206,7 @@ impl PolarBearCompositor {
         let mut seat = seat_state.new_wl_seat(&dh, "Polar Bear");
 
         let listener = bind_socket()?;
-        let clients = Arc::new(Mutex::new(Vec::new()));
+        let clients = Vec::new();
 
         let start_time = Instant::now();
 

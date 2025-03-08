@@ -39,7 +39,7 @@ khronos-egl = { version = "6.0.0", features = ["dynamic"] }
 
 
 [target.'cfg(target_os = "android")'.dependencies.smithay]
-version = "0.4.4"
+git = "https://github.com/Smithay/smithay.git"
 default-features = false
 features = [
     "wayland-protocols",

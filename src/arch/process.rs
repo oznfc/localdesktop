@@ -98,7 +98,7 @@ impl ArchProcess {
     }
 
     pub fn wait_with_output(self) -> std::io::Result<std::process::Output> {
-        if let Some(mut child) = self.process {
+        if let Some(child) = self.process {
             child.wait_with_output()
         } else {
             Err(std::io::Error::new(

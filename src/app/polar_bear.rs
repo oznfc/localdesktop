@@ -2,15 +2,26 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::{panic, thread};
 
-use smithay::backend::input::{InputBackend, InputEvent, KeyboardKeyEvent};
+use smithay::backend::input::{InputEvent, KeyboardKeyEvent};
+use smithay::backend::renderer::element::surface::{
+    render_elements_from_surface_tree, WaylandSurfaceRenderElement,
+};
+use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::utils::draw_render_elements;
+use smithay::backend::renderer::{Color32F, Frame, Renderer};
 use smithay::input::keyboard::FilterResult;
-use smithay::utils::{Clock, Monotonic, Physical, Size};
+use smithay::utils::{Clock, Monotonic, Physical, Rectangle, Size, Transform};
+use smithay::wayland::compositor::{
+    with_surface_tree_downward, CompositorClientState, SurfaceAttributes, TraversalAction,
+};
+use wayland_server::backend::{ClientData, ClientId, DisconnectReason};
+use wayland_server::protocol::wl_surface::WlSurface;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, Touch, TouchPhase, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::ActiveEventLoop;
 use winit::platform::android::activity::AndroidApp;
-use winit::window::{Window, WindowId};
+use winit::window::WindowId;
 
 use crate::arch::scaffold::scaffold;
 use crate::arch::setup::{setup, SetupOptions};
@@ -132,14 +143,14 @@ impl ApplicationHandler for PolarBearApp {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         // Map raw events to our own events
-        let (event) = match event {
+        let event = match event {
             WindowEvent::Resized(size) => {
                 let (w, h): (i32, i32) = size.into();
 
-                (CentralizedEvent::Resized {
+                CentralizedEvent::Resized {
                     size: (w, h).into(),
                     scale_factor: self.scale_factor,
-                })
+                }
             }
             WindowEvent::ScaleFactorChanged {
                 scale_factor: new_scale_factor,
@@ -148,14 +159,14 @@ impl ApplicationHandler for PolarBearApp {
                 self.scale_factor = new_scale_factor;
                 let (w, h): (i32, i32) =
                     self.backend.as_ref().unwrap().window().inner_size().into();
-                (CentralizedEvent::Resized {
+                CentralizedEvent::Resized {
                     size: (w, h).into(),
                     scale_factor: self.scale_factor,
-                })
+                }
             }
-            WindowEvent::RedrawRequested => (CentralizedEvent::Redraw),
-            WindowEvent::CloseRequested => (CentralizedEvent::CloseRequested),
-            WindowEvent::Focused(focused) => (CentralizedEvent::Focus(focused)),
+            WindowEvent::RedrawRequested => CentralizedEvent::Redraw,
+            WindowEvent::CloseRequested => CentralizedEvent::CloseRequested,
+            WindowEvent::Focused(focused) => CentralizedEvent::Focus(focused),
             WindowEvent::KeyboardInput {
                 event,
                 is_synthetic,
@@ -177,7 +188,7 @@ impl ApplicationHandler for PolarBearApp {
                         state: event.state,
                     },
                 };
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let size = self.backend.as_ref().unwrap().window().inner_size();
@@ -190,7 +201,7 @@ impl ApplicationHandler for PolarBearApp {
                         global_position: position,
                     },
                 };
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let event = InputEvent::PointerAxis {
@@ -199,7 +210,7 @@ impl ApplicationHandler for PolarBearApp {
                         delta,
                     },
                 };
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let event = InputEvent::PointerButton {
@@ -210,7 +221,7 @@ impl ApplicationHandler for PolarBearApp {
                         is_x11: self.is_x11,
                     },
                 };
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
             WindowEvent::Touch(winit::event::Touch {
                 phase: TouchPhase::Started,
@@ -230,7 +241,7 @@ impl ApplicationHandler for PolarBearApp {
                     },
                 };
 
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
             WindowEvent::Touch(Touch {
                 phase: TouchPhase::Moved,
@@ -250,7 +261,7 @@ impl ApplicationHandler for PolarBearApp {
                     },
                 };
 
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
 
             WindowEvent::Touch(Touch {
@@ -279,7 +290,7 @@ impl ApplicationHandler for PolarBearApp {
                     },
                 };
 
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
 
             WindowEvent::Touch(Touch {
@@ -293,7 +304,7 @@ impl ApplicationHandler for PolarBearApp {
                         id,
                     },
                 };
-                (CentralizedEvent::Input(event))
+                CentralizedEvent::Input(event)
             }
             _ => panic!("Unhandled event: {:?}", event),
         };
@@ -305,6 +316,85 @@ impl ApplicationHandler for PolarBearApp {
                 event_loop.exit();
             }
             CentralizedEvent::Redraw => {
+                if let Some(mut backend) = self.backend.as_mut() {
+                    let size = backend.window_size();
+                    let damage = Rectangle::from_size(size);
+                    {
+                        let (renderer, mut framebuffer) = backend.bind().unwrap();
+                        let mut lock = self
+                            .cloneable
+                            .inner
+                            .lock()
+                            .pb_expect("Failed to lock shared state");
+                        let mut compositor = lock
+                            .compositor
+                            .as_mut()
+                            .pb_expect("Failed to get compositor");
+
+                        let elements = compositor
+                            .state
+                            .xdg_shell_state
+                            .toplevel_surfaces()
+                            .iter()
+                            .flat_map(|surface| {
+                                render_elements_from_surface_tree(
+                                    renderer,
+                                    surface.wl_surface(),
+                                    (0, 0),
+                                    1.0,
+                                    1.0,
+                                    Kind::Unspecified,
+                                )
+                            })
+                            .collect::<Vec<WaylandSurfaceRenderElement<GlesRenderer>>>();
+
+                        let mut frame = renderer
+                            .render(&mut framebuffer, size, Transform::Flipped180)
+                            .unwrap();
+                        frame
+                            .clear(Color32F::new(0.1, 0.0, 0.0, 1.0), &[damage])
+                            .unwrap();
+                        draw_render_elements(&mut frame, 1.0, &elements, &[damage]).unwrap();
+                        // We rely on the nested compositor to do the sync for us
+                        let _ = frame.finish().unwrap();
+
+                        for surface in compositor.state.xdg_shell_state.toplevel_surfaces() {
+                            send_frames_surface_tree(
+                                surface.wl_surface(),
+                                compositor.start_time.elapsed().as_millis() as u32,
+                            );
+                        }
+
+                        if let Some(stream) = compositor
+                            .listener
+                            .accept()
+                            .pb_expect("Failed to accept listener")
+                        {
+                            println!("Got a client: {:?}", stream);
+
+                            let client = compositor
+                                .display
+                                .handle()
+                                .insert_client(stream, Arc::new(ClientState::default()))
+                                .unwrap();
+                            compositor.clients.push(client);
+                        }
+
+                        compositor
+                            .display
+                            .dispatch_clients(&mut compositor.state)
+                            .pb_expect("Failed to dispatch clients");
+                        compositor
+                            .display
+                            .flush_clients()
+                            .pb_expect("Failed to flush clients");
+                    }
+
+                    // It is important that all events on the display have been dispatched and flushed to clients before
+                    // swapping buffers because this operation may block.
+                    backend.submit(Some(&[damage])).unwrap();
+                }
+
                 // Redraw the application.
                 //
                 // It's preferable for applications that do not render continuously to render in
@@ -318,7 +408,7 @@ impl ApplicationHandler for PolarBearApp {
                 // You only need to call this if you've determined that you need to redraw in
                 // applications which do not always need to. Applications that redraw continuously
                 // can render here instead.
-                self.backend.as_ref().unwrap().window().request_redraw();
+                // self.backend.as_ref().unwrap().window().request_redraw();
             }
             CentralizedEvent::Input(event) => match event {
                 InputEvent::Keyboard { event } => {
@@ -383,4 +473,40 @@ pub enum CentralizedEvent {
 
     /// A redraw was requested
     Redraw,
+}
+
+pub fn send_frames_surface_tree(surface: &WlSurface, time: u32) {
+    with_surface_tree_downward(
+        surface,
+        (),
+        |_, _, &()| TraversalAction::DoChildren(()),
+        |_surf, states, &()| {
+            // the surface may not have any user_data if it is a subsurface and has not
+            // yet been commited
+            for callback in states
+                .cached_state
+                .get::<SurfaceAttributes>()
+                .current()
+                .frame_callbacks
+                .drain(..)
+            {
+                callback.done(time);
+            }
+        },
+        |_, _, &()| true,
+    );
+}
+
+#[derive(Default)]
+struct ClientState {
+    compositor_state: CompositorClientState,
+}
+impl ClientData for ClientState {
+    fn initialized(&self, _client_id: ClientId) {
+        println!("initialized");
+    }
+
+    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {
+        println!("disconnected");
+    }
 }

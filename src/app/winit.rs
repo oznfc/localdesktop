@@ -19,7 +19,7 @@
 //! two traits for the winit backend.
 
 use crate::utils::logging::PolarBearExpectation;
-use khronos_egl::{Config, DynamicInstance};
+use khronos_egl::DynamicInstance;
 use smithay::{
     backend::{
         egl::{
@@ -30,13 +30,14 @@ use smithay::{
         },
         renderer::{
             gles::{GlesError, GlesRenderer},
-            Bind, Renderer,
+            Bind,
         },
+        SwapBuffersError,
     },
     utils::{Physical, Rectangle, Size},
 };
+use std::cell::RefCell;
 use std::ffi::c_void;
-use std::ptr;
 use std::rc::Rc;
 use std::sync::Arc;
 use winit::event_loop::ActiveEventLoop;
@@ -159,7 +160,6 @@ pub fn bind(event_loop: &ActiveEventLoop) -> WinitGraphicsBackend<GlesRenderer> 
         Err(error) => panic!("Failed to get window handle: {:?}", error),
     };
 
-    let egl_surface = Rc::new(surface);
     let renderer =
         unsafe { GlesRenderer::new(context) }.pb_expect("Failed to create GLES Renderer");
     let damage_tracking = display.supports_damage();
@@ -169,7 +169,7 @@ pub fn bind(event_loop: &ActiveEventLoop) -> WinitGraphicsBackend<GlesRenderer> 
     WinitGraphicsBackend {
         window: window.clone(),
         _display: display,
-        egl_surface,
+        egl_surface: surface,
         damage_tracking,
         bind_size: None,
         renderer,
@@ -199,7 +199,7 @@ pub struct WinitGraphicsBackend<R> {
     renderer: R,
     // The display isn't used past this point but must be kept alive.
     _display: EGLDisplay,
-    egl_surface: Rc<EGLSurface>,
+    egl_surface: EGLSurface,
     window: Arc<WinitWindow>,
     damage_tracking: bool,
     bind_size: Option<Size<i32, Physical>>,
@@ -207,8 +207,8 @@ pub struct WinitGraphicsBackend<R> {
 
 impl<R> WinitGraphicsBackend<R>
 where
-    R: Bind<Rc<EGLSurface>>,
-    smithay::backend::SwapBuffersError: From<<R as Renderer>::Error>,
+    R: Bind<EGLSurface>,
+    SwapBuffersError: From<R::Error>,
 {
     /// Window size of the underlying window
     pub fn window_size(&self) -> Size<i32, Physical> {
@@ -232,7 +232,7 @@ where
     }
 
     /// Bind the underlying window to the underlying renderer.
-    pub fn bind(&mut self) -> Result<(), smithay::backend::SwapBuffersError> {
+    pub fn bind(&mut self) -> Result<(&mut R, R::Framebuffer<'_>), SwapBuffersError> {
         // NOTE: we must resize before making the current context current, otherwise the back
         // buffer will be latched. Some nvidia drivers may not like it, but a lot of wayland
         // software does the order that way due to mesa latching back buffer on each
@@ -243,17 +243,17 @@ where
         }
         self.bind_size = Some(window_size);
 
-        self.renderer.bind(self.egl_surface.clone())?;
+        let fb = self.renderer.bind(&mut self.egl_surface)?;
 
-        Ok(())
+        Ok((&mut self.renderer, fb))
     }
 
     /// Retrieve the underlying `EGLSurface` for advanced operations
     ///
     /// **Note:** Don't carelessly use this to manually bind the renderer to the surface,
     /// `WinitGraphicsBackend::bind` transparently handles window resizes for you.
-    pub fn egl_surface(&self) -> Rc<EGLSurface> {
-        self.egl_surface.clone()
+    pub fn egl_surface(&self) -> &EGLSurface {
+        &self.egl_surface
     }
 
     /// Retrieve the buffer age of the current backbuffer of the window.
@@ -277,7 +277,7 @@ where
     pub fn submit(
         &mut self,
         damage: Option<&[Rectangle<i32, Physical>]>,
-    ) -> Result<(), smithay::backend::SwapBuffersError> {
+    ) -> Result<(), SwapBuffersError> {
         let mut damage = match damage {
             Some(damage) if self.damage_tracking && !damage.is_empty() => {
                 let bind_size = self
