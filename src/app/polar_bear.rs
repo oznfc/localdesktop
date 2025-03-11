@@ -24,9 +24,9 @@ use winit::platform::android::activity::AndroidApp;
 use winit::window::WindowId;
 
 use crate::arch::scaffold::scaffold;
-use crate::arch::setup::{setup, SetupOptions};
+use crate::arch::setup::{launch, setup, SetupOptions};
 use crate::utils::config;
-use crate::utils::logging::{log_format, PolarBearExpectation};
+use crate::utils::logging::PolarBearExpectation;
 
 use super::compositor::PolarBearCompositor;
 use super::input::{
@@ -37,13 +37,13 @@ use super::input::{
 use super::keymap::physicalkey_to_scancode;
 use super::winit::{bind, WinitGraphicsBackend};
 
-pub struct ImmutableAppProperties {
-    pub compositor: Option<PolarBearCompositor>,
+pub struct PolarBearLogging {
     logs: VecDeque<String>,
 }
 
-impl ImmutableAppProperties {
+impl PolarBearLogging {
     pub fn log(&mut self, content: String) {
+        println!("🐻‍❄️ {}", content);
         self.logs.push_back(content);
         // Ensure the logs size stays at most 20
         if self.logs.len() > config::MAX_PANEL_LOG_ENTRIES {
@@ -52,80 +52,55 @@ impl ImmutableAppProperties {
     }
 }
 
-#[derive(Clone)]
-pub struct CloneableAppProperties {
-    pub inner: Arc<Mutex<ImmutableAppProperties>>,
-    pub android_app: AndroidApp,
-}
-
 pub struct PolarBearApp {
-    pub cloneable: CloneableAppProperties,
-
+    pub logging: Arc<Mutex<PolarBearLogging>>,
+    pub compositor: PolarBearCompositor,
     backend: Option<WinitGraphicsBackend<GlesRenderer>>,
     clock: Clock<Monotonic>,
     key_counter: u32,
-    is_x11: bool,
     scale_factor: f64,
 }
 
 impl PolarBearApp {
     pub fn build(android_app: AndroidApp) -> Self {
-        let inner = Arc::new(Mutex::new(ImmutableAppProperties {
-            compositor: None,
+        let logging = Arc::new(Mutex::new(PolarBearLogging {
             logs: VecDeque::new(),
         }));
 
-        let cloneable = CloneableAppProperties {
-            inner: inner.clone(),
-            android_app,
+        let cloned_logging = logging.clone();
+        let log = move |it| {
+            cloned_logging.lock().unwrap().log(it);
         };
 
-        let cloned_app = cloneable.clone();
+        // Step 1. Setup Arch FS if not already installed
+        scaffold(android_app.clone(), Box::new(log.clone()));
+
+        // Step 2. Install dependencies if not already installed
+        let compositor = setup(SetupOptions {
+            username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
+            checking_command: "pacman -Qg lxqt && pacman -Q breeze-icons".to_string(),
+            install_packages: "lxqt breeze-icons".to_string(),
+            log: Box::new(log.clone()),
+            android_app,
+        });
+
         thread::spawn(move || {
-            let result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                // Step 1. Setup Arch FS if not already installed
-                scaffold(&cloned_app);
-
-                // Step 2. Install dependencies if not already installed
-                // let launch_command =
-                //     "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
-                // let launch_command = "weston --fullscreen --scale=2".to_string();
-                // let launch_command = "Hyprland".to_string();
-                let launch_command =
-                    "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
-                        .to_string();
-
-                setup(
-                    &cloned_app,
-                    SetupOptions {
-                        username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-                        checking_command: "pacman -Qg lxqt && pacman -Q breeze-icons".to_string(),
-                        install_packages: "lxqt breeze-icons".to_string(),
-                        launch_command,
-                    },
-                );
-            }));
-            if let Err(e) = result {
-                let error_msg = e
-                    .downcast_ref::<&str>()
-                    .map(|s| *s)
-                    .or_else(|| e.downcast_ref::<String>().map(|s| s.as_str()))
-                    .unwrap_or("Unknown error");
-
-                inner.lock().unwrap().log(log_format(
-                    "POLAR BEAR COMPOSITOR RUNTIME ERROR",
-                    &format!("{}", error_msg),
-                ));
-            }
+            // let launch_command =
+            //     "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
+            // let launch_command = "weston --fullscreen --scale=2".to_string();
+            // let launch_command = "Hyprland".to_string();
+            let launch_command =
+                "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
+                    .to_string();
+            launch(launch_command);
         });
 
         Self {
-            cloneable,
-
+            logging,
+            compositor,
             backend: None,
             clock: Clock::new(),
             key_counter: 0,
-            is_x11: false,
             scale_factor: 1.0,
         }
     }
@@ -218,7 +193,7 @@ impl ApplicationHandler for PolarBearApp {
                         time: self.timestamp(),
                         button,
                         state,
-                        is_x11: self.is_x11,
+                        is_x11: false,
                     },
                 };
                 CentralizedEvent::Input(event)
@@ -321,15 +296,8 @@ impl ApplicationHandler for PolarBearApp {
                     let damage = Rectangle::from_size(size);
                     {
                         let (renderer, mut framebuffer) = backend.bind().unwrap();
-                        let mut lock = self
-                            .cloneable
-                            .inner
-                            .lock()
-                            .pb_expect("Failed to lock shared state");
-                        let mut compositor = lock
-                            .compositor
-                            .as_mut()
-                            .pb_expect("Failed to get compositor");
+
+                        let compositor = &mut self.compositor;
 
                         let elements = compositor
                             .state
@@ -412,8 +380,7 @@ impl ApplicationHandler for PolarBearApp {
             }
             CentralizedEvent::Input(event) => match event {
                 InputEvent::Keyboard { event } => {
-                    let mut lock = self.cloneable.inner.lock().unwrap();
-                    let compositor = lock.compositor.as_mut().unwrap();
+                    let compositor = &mut self.compositor;
                     let state = &mut compositor.state;
                     compositor.keyboard.input::<(), _>(
                         state,
@@ -428,8 +395,7 @@ impl ApplicationHandler for PolarBearApp {
                     );
                 }
                 InputEvent::PointerMotionAbsolute { .. } => {
-                    let mut lock = self.cloneable.inner.lock().unwrap();
-                    let compositor = lock.compositor.as_mut().unwrap();
+                    let compositor = &mut self.compositor;
                     let state = &mut compositor.state;
                     if let Some(surface) = state
                         .xdg_shell_state

@@ -5,6 +5,8 @@ use std::process::{Child, Command, Stdio};
 
 use crate::utils::{application_context::get_application_context, config};
 
+pub type Log = Box<dyn Fn(String)>;
+
 pub struct ArchProcess {
     pub command: String,
     pub user: String,

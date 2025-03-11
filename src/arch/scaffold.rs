@@ -1,21 +1,18 @@
-use crate::{
-    app::polar_bear::CloneableAppProperties,
-    utils::{application_context::get_application_context, config, logging::PolarBearExpectation},
+use crate::utils::{
+    application_context::get_application_context, config, logging::PolarBearExpectation,
 };
 use std::fs;
 use tar::Archive;
+use winit::platform::android::activity::AndroidApp;
 use xz2::read::XzDecoder;
 
-pub fn scaffold(app: &CloneableAppProperties) {
-    let log = |it| {
-        app.inner.lock().unwrap().log(it);
-    };
+use super::process::Log;
 
+pub fn scaffold(android_app: AndroidApp, log: Log) {
     let context = get_application_context().pb_expect("Failed to get application context");
     println!("Application context: {:?}", context);
     let fs_root = std::path::Path::new(config::ARCH_FS_ROOT);
-    let tar_file = app
-        .android_app
+    let tar_file = android_app
         .asset_manager()
         .open(
             std::ffi::CString::new(config::ARCH_FS_ARCHIVE)

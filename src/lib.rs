@@ -17,5 +17,6 @@ pub mod utils {
     pub mod application_context;
     pub mod config;
     pub mod logging;
+    pub mod toast;
     pub mod wayland;
 }

@@ -1,9 +1,8 @@
+use winit::platform::android::activity::AndroidApp;
+
 use crate::{
-    app::{compositor::PolarBearCompositor, polar_bear::CloneableAppProperties},
-    utils::{
-        config,
-        logging::{log_format, PolarBearExpectation},
-    },
+    app::compositor::PolarBearCompositor,
+    utils::{config, logging::PolarBearExpectation},
 };
 
 use super::process::ArchProcess;
@@ -11,23 +10,21 @@ use super::process::ArchProcess;
 pub struct SetupOptions {
     pub install_packages: String,
     pub checking_command: String,
-    pub launch_command: String,
     pub username: String,
+    pub log: Box<dyn Fn(String)>,
+    pub android_app: AndroidApp,
 }
 
-pub fn setup(app: &CloneableAppProperties, options: SetupOptions) {
+pub fn setup(options: SetupOptions) -> PolarBearCompositor {
     let SetupOptions {
         install_packages,
         checking_command,
-        launch_command,
         username,
+        log,
+        android_app,
     } = options;
 
-    let log = |it| {
-        app.inner.lock().unwrap().log(it);
-    };
-
-    ArchProcess::exec("uname -a").with_log(log);
+    ArchProcess::exec("uname -a").with_log(&log);
 
     // Fix "/tmp" can be written by others
     ArchProcess::exec("chmod 700 /tmp")
@@ -51,34 +48,30 @@ pub fn setup(app: &CloneableAppProperties, options: SetupOptions) {
             .pb_expect("Failed to check whether the installation target is installed")
             .success();
         if installed {
-            match PolarBearCompositor::build(&app.android_app) {
-                Ok(compositor) => {
-                    {
-                        app.inner.lock().unwrap().compositor.replace(compositor);
-                    }
-                    let full_launch_command = &format!(
-                        "HOME=/home/teddy USER=teddy XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} XDG_SESSION_TYPE=wayland {} 2>&1",
-                        config::XDG_RUNTIME_DIR,
-                        config::WAYLAND_SOCKET_NAME,
-                        launch_command
-                    );
-                    ArchProcess::exec(&full_launch_command).with_log(log);
-                }
-                Err(e) => {
-                    log(log_format(
-                        "POLAR BEAR COMPOSITOR RUNTIME ERROR",
-                        &format!("{}", e),
-                    ));
-                }
-            }
-            break;
+            break; // Start the compositor now
         } else {
-            ArchProcess::exec("rm /var/lib/pacman/db.lck");
+            ArchProcess::exec("rm /var/lib/pacman/db.lck"); // Install dependencies
             ArchProcess::exec(&format!(
                 "stdbuf -oL pacman -Syu {} --noconfirm --noprogressbar",
                 install_packages
             ))
-            .with_log(log);
+            .with_log(&log);
         }
     }
+
+    let compositor =
+        PolarBearCompositor::build(&android_app).pb_expect("Failed to build compositor");
+    compositor
+}
+
+pub fn launch(launch_command: String) {
+    let full_launch_command = &format!(
+        "HOME=/home/teddy USER=teddy XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} XDG_SESSION_TYPE=wayland {} 2>&1",
+        config::XDG_RUNTIME_DIR,
+        config::WAYLAND_SOCKET_NAME,
+        launch_command
+    );
+    ArchProcess::exec(&full_launch_command).with_log(|it| {
+        println!("{}", it);
+    });
 }
