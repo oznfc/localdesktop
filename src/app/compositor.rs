@@ -174,9 +174,10 @@ pub fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
 }
 
 #[derive(Default)]
-struct ClientState {
+pub struct ClientState {
     compositor_state: CompositorClientState,
 }
+
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {
         println!("initialized");
@@ -214,9 +215,9 @@ impl PolarBearCompositor {
         let keyboard = seat.add_keyboard(Default::default(), 1000, 200).unwrap();
         let touch = seat.add_touch();
 
-        let native_window = app.native_window().pb_expect("Failed to get ANativeWindow");
-        let display_width = native_window.width();
-        let display_height = native_window.height();
+        let configuration = app.config();
+        let display_width = configuration.screen_width_dp().unwrap_or(1920);
+        let display_height = configuration.screen_height_dp().unwrap_or(1080);
         let size = (display_width, display_height);
         // Create the Output with given name and physical properties.
         let output = Output::new(

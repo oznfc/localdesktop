@@ -23,6 +23,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::platform::android::activity::AndroidApp;
 use winit::window::WindowId;
 
+use crate::app::compositor::ClientState;
 use crate::arch::scaffold::scaffold;
 use crate::arch::setup::{launch, setup, SetupOptions};
 use crate::utils::config;
@@ -78,8 +79,8 @@ impl PolarBearApp {
         // Step 2. Install dependencies if not already installed
         let compositor = setup(SetupOptions {
             username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-            checking_command: "pacman -Qg lxqt && pacman -Q breeze-icons".to_string(),
-            install_packages: "lxqt breeze-icons".to_string(),
+            checking_command: "pacman -Q weston".to_string(),
+            install_packages: "weston".to_string(),
             log: Box::new(log.clone()),
             android_app,
         });
@@ -87,11 +88,11 @@ impl PolarBearApp {
         thread::spawn(move || {
             // let launch_command =
             //     "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
-            // let launch_command = "weston --fullscreen --scale=2".to_string();
+            let launch_command = "weston --fullscreen --scale=2".to_string();
             // let launch_command = "Hyprland".to_string();
-            let launch_command =
-                "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
-                    .to_string();
+            // let launch_command =
+            //     "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
+            //         .to_string();
             launch(launch_command);
         });
 
@@ -376,7 +377,7 @@ impl ApplicationHandler for PolarBearApp {
                 // You only need to call this if you've determined that you need to redraw in
                 // applications which do not always need to. Applications that redraw continuously
                 // can render here instead.
-                // self.backend.as_ref().unwrap().window().request_redraw();
+                self.backend.as_ref().unwrap().window().request_redraw();
             }
             CentralizedEvent::Input(event) => match event {
                 InputEvent::Keyboard { event } => {
@@ -461,18 +462,4 @@ pub fn send_frames_surface_tree(surface: &WlSurface, time: u32) {
         },
         |_, _, &()| true,
     );
-}
-
-#[derive(Default)]
-struct ClientState {
-    compositor_state: CompositorClientState,
-}
-impl ClientData for ClientState {
-    fn initialized(&self, _client_id: ClientId) {
-        println!("initialized");
-    }
-
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {
-        println!("disconnected");
-    }
 }
