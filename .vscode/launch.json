@@ -10,23 +10,11 @@
       // Downgrade to v1.11.1 via Extensions tab > CodeLLDB > Install Specific Version... > v1.11.1.
       "type": "android-debug",
       "name": "[Android] Debug",
-      "preLaunchTask": "[Android] Build",
+      "preLaunchTask": "[Android] Build & Logcat",
       "target": "select",
       "mode": "native",
       "apkPath": "${workspaceFolder}/target/x/debug/android/polar-bear.apk",
       "launchActivity": "android.app.NativeActivity"
-    },
-    {
-      "request": "attach",
-      // Use CodeLLDB v1.11.1 to avoid the bug mentioned above.
-      "type": "android-debug",
-      // Allows viewing logs (e.g., from `println!`) by attaching to the process started by xbuild (shortcut `Ctrl+Shift+B`).
-      // Future improvement: view logs when using the launch request above.
-      "name": "[Android] Attach",
-      "target": "select",
-      "pid": "${command:pickAndroidProcess}",
-      "mode": "native",
-      "packageName": "app.polarbear"
     }
   ]
 }

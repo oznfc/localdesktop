@@ -5,6 +5,8 @@ use std::process::{Child, Command, Stdio};
 
 use crate::utils::{application_context::get_application_context, config};
 
+pub type Log = Box<dyn Fn(String)>;
+
 pub struct ArchProcess {
     pub command: String,
     pub user: String,
@@ -98,7 +100,7 @@ impl ArchProcess {
     }
 
     pub fn wait_with_output(self) -> std::io::Result<std::process::Output> {
-        if let Some(mut child) = self.process {
+        if let Some(child) = self.process {
             child.wait_with_output()
         } else {
             Err(std::io::Error::new(

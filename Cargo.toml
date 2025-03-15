@@ -15,6 +15,7 @@ lto = true
 codegen-units = 1
 
 [dependencies]
+libloading = "0.8.6"
 xz2 = "0.1.7"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -29,18 +30,15 @@ tar = "0.4.43"
 wayland-server = "0.31.6"
 xkbcommon-rs = "0.1.0"
 android_logger = { version = "0.14", default-features = false }
-eframe = { version = "0.30", default-features = false, features = [
-    "glow",
+winit = { version = "0.30.9", features = [
     "android-native-activity",
-    "default_fonts",
+    "wayland",
 ] }
-egui-winit = { version = "0.30", default-features = false, features = [
-    "clipboard",
-    "links",
-] }
+wayland-protocols = "0.32.6"
+khronos-egl = { version = "6.0.0", features = ["dynamic"] }
 
 [target.'cfg(target_os = "android")'.dependencies.smithay]
-git = "https://github.com/Smithay/smithay"
+version = "0.5.0"
 default-features = false
 features = [
     "wayland-protocols",
@@ -48,3 +46,6 @@ features = [
     "renderer_glow",
     "wayland_frontend",
 ]
+
+[patch.crates-io]
+smithay = { path = "patches/smithay" }

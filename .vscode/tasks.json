@@ -8,22 +8,36 @@
       "args": ["build", "--platform=android", "--arch=arm64"],
       "group": {
         "kind": "build",
-        "isDefault": false
+        "isDefault": true
       }
     },
     {
       "type": "shell",
-      "label": "[Android] Run",
+      "label": "[Android] Logcat",
       "command": "sh",
-      "args": [
-        "-c",
-        "~/.cargo/bin/x run --debug --device $(~/.cargo/bin/x devices | grep \"android arm64\" | head -n 1 | awk \"{print \\$1}\")"
-      ],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "isBackground": true
+      "args": ["-c", "adb logcat -c && adb logcat -s RustStdoutStderr"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": [
+          {
+            "regexp": ".",
+            "file": 1,
+            "location": 2,
+            "message": 3
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*",
+          "endsPattern": ".*"
+        }
+      }
+    },
+    {
+      "label": "[Android] Build & Logcat",
+      "dependsOn": ["[Android] Build", "[Android] Logcat"],
+      "dependsOrder": "parallel"
     }
   ]
 }

@@ -1,13 +1,11 @@
 use crate::utils::logging::PolarBearExpectation;
-use egui_winit::winit::platform::android::activity::AndroidApp;
 use jni::{
     objects::{JObject, JString},
     JNIEnv, JavaVM,
 };
 use std::path::PathBuf;
 use std::sync::RwLock;
-
-use super::config;
+use winit::platform::android::activity::AndroidApp;
 
 #[derive(Debug, Clone)]
 pub struct ApplicationContext {
@@ -89,9 +87,9 @@ static APPLICATION_CONTEXT: RwLock<Option<ApplicationContext>> = RwLock::new(Non
 pub fn get_application_context() -> Option<ApplicationContext> {
     #[cfg(test)]
     return Some(ApplicationContext {
-        cache_dir: config::ARCH_FS_ROOT.into(),
-        data_dir: config::ARCH_FS_ROOT.into(),
-        native_library_dir: config::ARCH_FS_ROOT.into(), // push mock libraries here for testing
+        cache_dir: super::config::ARCH_FS_ROOT.into(),
+        data_dir: super::config::ARCH_FS_ROOT.into(),
+        native_library_dir: super::config::ARCH_FS_ROOT.into(), // push mock libraries here for testing
     });
 
     #[cfg(not(test))]

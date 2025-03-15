@@ -5,17 +5,8 @@ use std::{
     time::Instant, // Added import
 };
 
-use eframe::egui::Vec2;
-use egui_winit::winit::platform::android::activity::AndroidApp;
 use smithay::{
-    backend::renderer::{
-        element::{
-            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-            Kind,
-        },
-        utils::{draw_render_elements, on_commit_buffer_handler},
-        Color32F, Frame, Renderer,
-    },
+    backend::renderer::utils::on_commit_buffer_handler,
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_shell,
     input::{self, keyboard::KeyboardHandle, touch::TouchHandle, Seat, SeatHandler, SeatState},
@@ -24,7 +15,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{protocol::wl_seat, Display},
     },
-    utils::{Rectangle, Serial, Size, Transform},
+    utils::{Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -52,29 +43,28 @@ use wayland_server::{
     },
     Client, ListeningSocket,
 };
+use winit::platform::android::activity::AndroidApp;
 
 use crate::utils::{config, logging::PolarBearExpectation, wayland::bind_socket};
 
-use super::renderer::PolarBearRenderer;
-
 pub struct PolarBearCompositor {
     pub state: State,
-    display: Display<State>,
-    listener: ListeningSocket,
-    clients: Arc<Mutex<Vec<Client>>>,
+    pub display: Display<State>,
+    pub listener: ListeningSocket,
+    pub clients: Vec<Client>,
     pub start_time: Instant,
-    seat: Seat<State>,
+    pub seat: Seat<State>,
     pub keyboard: KeyboardHandle<State>,
     pub touch: TouchHandle<State>,
-    output: Output,
+    pub output: Output,
 }
 
 pub struct State {
-    compositor_state: CompositorState,
-    xdg_shell_state: XdgShellState,
-    shm_state: ShmState,
-    data_device_state: DataDeviceState,
-    seat_state: SeatState<Self>,
+    pub compositor_state: CompositorState,
+    pub xdg_shell_state: XdgShellState,
+    pub shm_state: ShmState,
+    pub data_device_state: DataDeviceState,
+    pub seat_state: SeatState<Self>,
     size: (i32, i32),
 }
 
@@ -184,9 +174,10 @@ pub fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
 }
 
 #[derive(Default)]
-struct ClientState {
+pub struct ClientState {
     compositor_state: CompositorClientState,
 }
+
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {
         println!("initialized");
@@ -216,7 +207,7 @@ impl PolarBearCompositor {
         let mut seat = seat_state.new_wl_seat(&dh, "Polar Bear");
 
         let listener = bind_socket()?;
-        let clients = Arc::new(Mutex::new(Vec::new()));
+        let clients = Vec::new();
 
         let start_time = Instant::now();
 
@@ -224,9 +215,9 @@ impl PolarBearCompositor {
         let keyboard = seat.add_keyboard(Default::default(), 1000, 200).unwrap();
         let touch = seat.add_touch();
 
-        let native_window = app.native_window().pb_expect("Failed to get ANativeWindow");
-        let display_width = native_window.width();
-        let display_height = native_window.height();
+        let configuration = app.config();
+        let display_width = configuration.screen_width_dp().unwrap_or(1920);
+        let display_height = configuration.screen_height_dp().unwrap_or(1080);
         let size = (display_width, display_height);
         // Create the Output with given name and physical properties.
         let output = Output::new(
@@ -279,100 +270,5 @@ impl PolarBearCompositor {
             touch,
             output,
         })
-    }
-
-    pub fn get_surface(&mut self) -> Option<WlSurface> {
-        if let Some(surface) = self
-            .state
-            .xdg_shell_state
-            .toplevel_surfaces()
-            .iter()
-            .next()
-            .cloned()
-        {
-            let surface = surface.wl_surface().clone();
-            return Some(surface);
-        };
-        return None;
-    }
-
-    pub fn draw(
-        &mut self,
-        mut renderer: PolarBearRenderer,
-        size: Vec2,
-    ) -> Result<(), Box<dyn Error>> {
-        let size = Size::from((size.x as i32, size.y as i32));
-
-        let damage = Rectangle::from_size(size);
-
-        let elements = self
-            .state
-            .xdg_shell_state
-            .toplevel_surfaces()
-            .iter()
-            .flat_map(|surface| {
-                render_elements_from_surface_tree(
-                    &mut renderer,
-                    surface.wl_surface(),
-                    (0, 0),
-                    1.0,
-                    1.0,
-                    Kind::Unspecified,
-                )
-            })
-            .collect::<Vec<WaylandSurfaceRenderElement<PolarBearRenderer>>>();
-
-        let mut frame = renderer.render(size, Transform::Flipped180).unwrap();
-        frame
-            .clear(Color32F::new(0.1, 0.0, 0.0, 1.0), &[damage])
-            .unwrap();
-        draw_render_elements(&mut frame, 1.0, &elements, &[damage]).unwrap();
-        let _ = frame.finish().unwrap();
-
-        for surface in self.state.xdg_shell_state.toplevel_surfaces() {
-            send_frames_surface_tree(
-                surface.wl_surface(),
-                self.start_time.elapsed().as_millis() as u32,
-            );
-        }
-
-        if let Some(stream) = self.listener.accept()? {
-            println!("Got a client: {:?}", stream);
-
-            let client = self
-                .display
-                .handle()
-                .insert_client(stream, Arc::new(ClientState::default()))
-                .unwrap();
-            self.clients.lock().unwrap().push(client);
-        }
-
-        let state = &mut self.state;
-        self.display.dispatch_clients(state)?;
-        self.display.flush_clients()?;
-
-        // let mut damage = match damage {
-        //     Some(damage) if self.damage_tracking && !damage.is_empty() => {
-        //         let bind_size = self
-        //             .bind_size
-        //             .expect("submitting without ever binding the renderer.");
-        //         let damage = damage
-        //             .iter()
-        //             .map(|rect| {
-        //                 Rectangle::new(
-        //                     (rect.loc.x, bind_size.h - rect.loc.y - rect.size.h).into(),
-        //                     rect.size,
-        //                 )
-        //             })
-        //             .collect::<Vec<_>>();
-        //         Some(damage)
-        //     }
-        //     _ => None,
-        // };
-
-        // // Request frame callback.
-        // self.window.pre_present_notify();
-        // self.egl_surface.swap_buffers(damage.as_deref_mut())?;
-        Ok(())
     }
 }
