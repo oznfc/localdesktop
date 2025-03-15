@@ -4638,7 +4638,6 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 [[package]]
 name = "smithay"
 version = "0.5.0"
-source = "git+https://github.com/Smithay/smithay.git#99cd2507255f62c46e67467db2fc378451d58aa7"
 dependencies = [
  "appendlist",
  "bitflags 2.6.0",
