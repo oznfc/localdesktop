@@ -144,6 +144,10 @@ pub mod egl {
     use libloading::Library;
     use std::sync::{LazyLock, Once};
 
+    #[cfg(target_os = "android")]
+    pub static LIB: LazyLock<Library> =
+        LazyLock::new(|| unsafe { Library::new("libEGL.so") }.expect("Failed to load LibEGL"));
+    #[cfg(not(target_os = "android"))]
     pub static LIB: LazyLock<Library> =
         LazyLock::new(|| unsafe { Library::new("libEGL.so.1") }.expect("Failed to load LibEGL"));
 

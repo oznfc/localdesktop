@@ -361,16 +361,38 @@ impl EGLContext {
     #[instrument(level = "trace", skip_all, parent = &self.span, err)]
     #[profiling::function]
     pub unsafe fn make_current(&self) -> Result<(), MakeCurrentError> {
-        wrap_egl_call_bool(|| {
-            ffi::egl::MakeCurrent(
+        #[cfg(target_os = "android")]
+        {
+            let pbuffer_attribs = vec![ffi::egl::WIDTH, 1, ffi::egl::HEIGHT, 1, ffi::egl::NONE];
+            let pbuffer = ffi::egl::CreatePbufferSurface(
                 **self.display.get_display_handle(),
-                ffi::egl::NO_SURFACE,
-                ffi::egl::NO_SURFACE,
-                self.context,
-            )
-        })
-        .map(|_| ())
-        .map_err(Into::into)
+                self.config_id,
+                pbuffer_attribs.as_ptr() as *const c_int,
+            );
+            wrap_egl_call_bool(|| {
+                ffi::egl::MakeCurrent(
+                    **self.display.get_display_handle(),
+                    pbuffer,
+                    pbuffer,
+                    self.context,
+                )
+            })
+            .map(|_| ())
+            .map_err(Into::into)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            wrap_egl_call_bool(|| {
+                ffi::egl::MakeCurrent(
+                    **self.display.get_display_handle(),
+                    ffi::egl::NO_SURFACE,
+                    ffi::egl::NO_SURFACE,
+                    self.context,
+                )
+            })
+            .map(|_| ())
+            .map_err(Into::into)
+        }
     }
 
     /// Makes the OpenGL context the current context in the current thread with a surface to
