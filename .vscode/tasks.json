@@ -15,29 +15,7 @@
       "type": "shell",
       "label": "[Android] Logcat",
       "command": "sh",
-      "args": ["-c", "adb logcat -c && adb logcat -s RustStdoutStderr"],
-      "isBackground": true,
-      "problemMatcher": {
-        "owner": "custom",
-        "pattern": [
-          {
-            "regexp": ".",
-            "file": 1,
-            "location": 2,
-            "message": 3
-          }
-        ],
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": ".*",
-          "endsPattern": ".*"
-        }
-      }
-    },
-    {
-      "label": "[Android] Build & Logcat",
-      "dependsOn": ["[Android] Build", "[Android] Logcat"],
-      "dependsOrder": "parallel"
+      "args": ["-c", "adb logcat -c && adb logcat -s RustStdoutStderr"]
     }
   ]
 }

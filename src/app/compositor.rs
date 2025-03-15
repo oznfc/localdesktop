@@ -1,12 +1,13 @@
 use std::{
     error::Error,
     os::unix::io::OwnedFd,
+    rc::Rc,
     sync::{Arc, Mutex},
     time::Instant, // Added import
 };
 
 use smithay::{
-    backend::renderer::utils::on_commit_buffer_handler,
+    backend::renderer::{gles::GlesRenderer, utils::on_commit_buffer_handler},
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_shell,
     input::{self, keyboard::KeyboardHandle, touch::TouchHandle, Seat, SeatHandler, SeatState},
@@ -15,7 +16,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{protocol::wl_seat, Display},
     },
-    utils::{Serial, Size, Transform},
+    utils::{Logical, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -47,6 +48,8 @@ use winit::platform::android::activity::AndroidApp;
 
 use crate::utils::{config, logging::PolarBearExpectation, wayland::bind_socket};
 
+use super::winit::WinitGraphicsBackend;
+
 pub struct PolarBearCompositor {
     pub state: State,
     pub display: Display<State>,
@@ -56,7 +59,7 @@ pub struct PolarBearCompositor {
     pub seat: Seat<State>,
     pub keyboard: KeyboardHandle<State>,
     pub touch: TouchHandle<State>,
-    pub output: Output,
+    pub output: Option<Output>,
 }
 
 pub struct State {
@@ -65,7 +68,7 @@ pub struct State {
     pub shm_state: ShmState,
     pub data_device_state: DataDeviceState,
     pub seat_state: SeatState<Self>,
-    size: (i32, i32),
+    pub size: Size<i32, Logical>,
 }
 
 impl BufferHandler for State {
@@ -79,7 +82,7 @@ impl XdgShellHandler for State {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         surface.with_pending_state(|state| {
-            state.size.replace(Size::from(self.size));
+            state.size.replace(self.size);
             state.states.set(xdg_toplevel::State::Activated);
         });
         surface.send_configure();
@@ -199,7 +202,7 @@ delegate_data_device!(State);
 delegate_output!(State);
 
 impl PolarBearCompositor {
-    pub fn build(app: &AndroidApp) -> Result<PolarBearCompositor, Box<dyn Error>> {
+    pub fn build() -> Result<PolarBearCompositor, Box<dyn Error>> {
         let display = Display::new()?;
         let dh = display.handle();
 
@@ -215,48 +218,13 @@ impl PolarBearCompositor {
         let keyboard = seat.add_keyboard(Default::default(), 1000, 200).unwrap();
         let touch = seat.add_touch();
 
-        let configuration = app.config();
-        let display_width = configuration.screen_width_dp().unwrap_or(1920);
-        let display_height = configuration.screen_height_dp().unwrap_or(1080);
-        let size = (display_width, display_height);
-        // Create the Output with given name and physical properties.
-        let output = Output::new(
-            "Polar Bear Wayland Compositor".into(), // the name of this output,
-            PhysicalProperties {
-                size: size.into(),                 // dimensions (width, height) in mm
-                subpixel: Subpixel::HorizontalRgb, // subpixel information
-                make: "Polar Bear".into(),         // make of the monitor
-                model: config::VERSION.into(),     // model of the monitor
-            },
-        );
-
-        // create a global, if you want to advertise it to clients
-        let _global = output.create_global::<State>(
-            &dh, // the display
-        ); // you can drop the global, if you never intend to destroy it.
-           // Now you can configure it
-        output.change_current_state(
-            Some(Mode {
-                size: size.into(),
-                refresh: 60000,
-            }), // the resolution mode,
-            Some(Transform::Normal), // global screen transformation
-            Some(Scale::Integer(1)), // global screen scaling factor
-            Some((0, 0).into()),     // output position
-        );
-        // set the preferred mode
-        output.set_preferred(Mode {
-            size: size.into(),
-            refresh: 60000,
-        });
-
         let state = State {
             compositor_state: CompositorState::new::<State>(&dh),
             xdg_shell_state: XdgShellState::new::<State>(&dh),
             shm_state: ShmState::new::<State>(&dh, vec![]),
             data_device_state: DataDeviceState::new::<State>(&dh),
             seat_state,
-            size,
+            size: (1920, 1080).into(),
         };
 
         Ok(PolarBearCompositor {
@@ -268,7 +236,7 @@ impl PolarBearCompositor {
             seat,
             keyboard,
             touch,
-            output,
+            output: None,
         })
     }
 }

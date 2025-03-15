@@ -10,7 +10,7 @@
       // Downgrade to v1.11.1 via Extensions tab > CodeLLDB > Install Specific Version... > v1.11.1.
       "type": "android-debug",
       "name": "[Android] Debug",
-      "preLaunchTask": "[Android] Build & Logcat",
+      "preLaunchTask": "[Android] Build",
       "target": "select",
       "mode": "native",
       "apkPath": "${workspaceFolder}/target/x/debug/android/polar-bear.apk",

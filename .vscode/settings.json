@@ -4,7 +4,9 @@
     "eframe",
     "egui",
     "Fourcc",
+    "gles",
     "PROOT",
+    "smithay",
     "Wgpu",
     "winit",
     "xbuild"

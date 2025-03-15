@@ -36,9 +36,7 @@ use smithay::{
     },
     utils::{Physical, Rectangle, Size},
 };
-use std::cell::RefCell;
 use std::ffi::c_void;
-use std::rc::Rc;
 use std::sync::Arc;
 use winit::event_loop::ActiveEventLoop;
 use winit::raw_window_handle::{AndroidNdkWindowHandle, HasWindowHandle, RawWindowHandle};

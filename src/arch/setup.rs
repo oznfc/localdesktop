@@ -59,8 +59,7 @@ pub fn setup(options: SetupOptions) -> PolarBearCompositor {
         }
     }
 
-    let compositor =
-        PolarBearCompositor::build(&android_app).pb_expect("Failed to build compositor");
+    let compositor = PolarBearCompositor::build().pb_expect("Failed to build compositor");
     compositor
 }
 

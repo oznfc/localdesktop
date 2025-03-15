@@ -11,11 +11,11 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::utils::draw_render_elements;
 use smithay::backend::renderer::{Color32F, Frame, Renderer};
 use smithay::input::keyboard::FilterResult;
+use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::{Clock, Monotonic, Physical, Rectangle, Size, Transform};
 use smithay::wayland::compositor::{
-    with_surface_tree_downward, CompositorClientState, SurfaceAttributes, TraversalAction,
+    with_surface_tree_downward, SurfaceAttributes, TraversalAction,
 };
-use wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use wayland_server::protocol::wl_surface::WlSurface;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, Touch, TouchPhase, WindowEvent};
@@ -29,7 +29,7 @@ use crate::arch::setup::{launch, setup, SetupOptions};
 use crate::utils::config;
 use crate::utils::logging::PolarBearExpectation;
 
-use super::compositor::PolarBearCompositor;
+use super::compositor::{PolarBearCompositor, State};
 use super::input::{
     RelativePosition, WinitInput, WinitKeyboardInputEvent, WinitMouseInputEvent,
     WinitMouseMovedEvent, WinitMouseWheelEvent, WinitTouchCancelledEvent, WinitTouchEndedEvent,
@@ -56,7 +56,7 @@ impl PolarBearLogging {
 pub struct PolarBearApp {
     pub logging: Arc<Mutex<PolarBearLogging>>,
     pub compositor: PolarBearCompositor,
-    backend: Option<WinitGraphicsBackend<GlesRenderer>>,
+    pub backend: Option<WinitGraphicsBackend<GlesRenderer>>,
     clock: Clock<Monotonic>,
     key_counter: u32,
     scale_factor: f64,
@@ -85,17 +85,6 @@ impl PolarBearApp {
             android_app,
         });
 
-        thread::spawn(move || {
-            // let launch_command =
-            //     "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
-            let launch_command = "weston --fullscreen --scale=2".to_string();
-            // let launch_command = "Hyprland".to_string();
-            // let launch_command =
-            //     "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
-            //         .to_string();
-            launch(launch_command);
-        });
-
         Self {
             logging,
             compositor,
@@ -114,7 +103,54 @@ impl PolarBearApp {
 impl ApplicationHandler for PolarBearApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let backend = bind(&event_loop);
+        let window_size = backend.window_size();
+        let scale_factor = backend.scale_factor();
+        let size = (window_size.w, window_size.h);
         self.backend = Some(backend);
+        self.compositor.state.size = size.into();
+
+        // Create the Output with given name and physical properties.
+        let output = Output::new(
+            "Polar Bear Wayland Compositor".into(), // the name of this output,
+            PhysicalProperties {
+                size: size.into(),                 // dimensions (width, height) in mm
+                subpixel: Subpixel::HorizontalRgb, // subpixel information
+                make: "Polar Bear".into(),         // make of the monitor
+                model: config::VERSION.into(),     // model of the monitor
+            },
+        );
+
+        let dh = self.compositor.display.handle();
+        // create a global, if you want to advertise it to clients
+        let _global = output.create_global::<State>(
+            &dh, // the display
+        ); // you can drop the global, if you never intend to destroy it.
+           // Now you can configure it
+        output.change_current_state(
+            Some(Mode {
+                size: size.into(),
+                refresh: 60000,
+            }), // the resolution mode,
+            Some(Transform::Normal), // global screen transformation
+            Some(Scale::Fractional(scale_factor)), // global screen scaling factor
+            Some((0, 0).into()),     // output position
+        );
+        // set the preferred mode
+        output.set_preferred(Mode {
+            size: size.into(),
+            refresh: 60000,
+        });
+
+        thread::spawn(move || {
+            // let launch_command =
+            //     "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
+            let launch_command = format!("weston --fullscreen --scale={}", scale_factor);
+            // let launch_command = "Hyprland".to_string();
+            // let launch_command =
+            //     "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
+            //         .to_string();
+            launch(launch_command);
+        });
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
