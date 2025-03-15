@@ -2,7 +2,9 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::{panic, thread};
 
-use smithay::backend::input::{InputEvent, KeyboardKeyEvent};
+use smithay::backend::input::{
+    AbsolutePositionEvent, InputEvent, KeyboardKeyEvent, TouchEvent, TouchSlot,
+};
 use smithay::backend::renderer::element::surface::{
     render_elements_from_surface_tree, WaylandSurfaceRenderElement,
 };
@@ -11,8 +13,11 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::utils::draw_render_elements;
 use smithay::backend::renderer::{Color32F, Frame, Renderer};
 use smithay::input::keyboard::FilterResult;
+use smithay::input::touch::{DownEvent, UpEvent};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
-use smithay::utils::{Clock, Monotonic, Physical, Rectangle, Size, Transform};
+use smithay::utils::{
+    Clock, Monotonic, Physical, Point, Rectangle, Size, Transform, SERIAL_COUNTER,
+};
 use smithay::wayland::compositor::{
     with_surface_tree_downward, SurfaceAttributes, TraversalAction,
 };
@@ -79,8 +84,8 @@ impl PolarBearApp {
         // Step 2. Install dependencies if not already installed
         let compositor = setup(SetupOptions {
             username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-            checking_command: "pacman -Q weston".to_string(),
-            install_packages: "weston".to_string(),
+            checking_command: "pacman -Qg plasma".to_string(),
+            install_packages: "plasma".to_string(),
             log: Box::new(log.clone()),
             android_app,
         });
@@ -142,10 +147,9 @@ impl ApplicationHandler for PolarBearApp {
         });
 
         thread::spawn(move || {
-            // let launch_command =
-            //     "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
-            let launch_command = format!("weston --fullscreen --scale={}", scale_factor);
-            // let launch_command = "Hyprland".to_string();
+            let launch_command =
+                "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
+            // let launch_command = format!("weston --fullscreen --scale={}", scale_factor);
             // let launch_command =
             //     "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
             //         .to_string();
@@ -419,19 +423,21 @@ impl ApplicationHandler for PolarBearApp {
                 InputEvent::Keyboard { event } => {
                     let compositor = &mut self.compositor;
                     let state = &mut compositor.state;
+                    let serial = SERIAL_COUNTER.next_serial();
+                    let time = compositor.start_time.elapsed().as_millis() as u32;
                     compositor.keyboard.input::<(), _>(
                         state,
                         event.key_code(),
                         event.state(),
-                        0.into(),
-                        0,
+                        serial,
+                        time,
                         |_, _, _| {
                             //
                             FilterResult::Forward
                         },
                     );
                 }
-                InputEvent::PointerMotionAbsolute { .. } => {
+                InputEvent::TouchDown { event } => {
                     let compositor = &mut self.compositor;
                     let state = &mut compositor.state;
                     if let Some(surface) = state
@@ -441,10 +447,45 @@ impl ApplicationHandler for PolarBearApp {
                         .next()
                         .cloned()
                     {
-                        let surface = surface.wl_surface().clone();
-                        compositor
-                            .keyboard
-                            .set_focus(state, Some(surface), 0.into());
+                        compositor.keyboard.set_focus(
+                            state,
+                            Some(surface.wl_surface().clone()),
+                            0.into(),
+                        );
+                        let serial = SERIAL_COUNTER.next_serial();
+                        let time = compositor.start_time.elapsed().as_millis() as u32;
+                        compositor.touch.down(
+                            state,
+                            Some((surface.wl_surface().clone(), (0f64, 0f64).into())),
+                            &DownEvent {
+                                slot: event.slot(),
+                                location: (event.x(), event.y()).into(),
+                                serial,
+                                time,
+                            },
+                        );
+                    };
+                }
+                InputEvent::TouchUp { event } => {
+                    let compositor = &mut self.compositor;
+                    let state = &mut compositor.state;
+                    if let Some(surface) = state
+                        .xdg_shell_state
+                        .toplevel_surfaces()
+                        .iter()
+                        .next()
+                        .cloned()
+                    {
+                        let serial = SERIAL_COUNTER.next_serial();
+                        let time = compositor.start_time.elapsed().as_millis() as u32;
+                        compositor.touch.up(
+                            state,
+                            &UpEvent {
+                                slot: event.slot(),
+                                serial,
+                                time,
+                            },
+                        );
                     };
                 }
                 _ => {}
