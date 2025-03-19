@@ -4,6 +4,16 @@ Polar Bear helps you run a desktop Linux environment on your Android device.
 
 > This is a Rust rewrite of the original [Polar Bear](https://github.com/polar-bear-app/polar-bear-app) project, which was written in Kotlin and C++. The aim of this rewrite is to make it more stable, portable, and able to do the development work on Android.
 
+## How it works
+
+1. An Arch Linux ARM64 filesystem is set up inside the app's internal storage.
+2. Proot mounts the filesystem and provides a chroot-like environment.
+3. A minimal built-in Wayland compositor runs in Android NDK.
+4. Rootful Xwayland & a desktop environment launches inside the chroot and renders back to the Android native activity.
+
+![POC](./assets/docs/proof-of-concept.png)
+_Proof of Concept: A Pixel Tablet running the XFCE desktop environment inside a Proot-based ARM64 Linux environment. No configuration is required; just install and go._
+
 ## Getting Started
 
 ### How to build an APK

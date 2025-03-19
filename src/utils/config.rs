@@ -9,6 +9,6 @@ pub const XDG_RUNTIME_DIR: &str = "/tmp"; // Main compositor (Weston/KDE), runni
 
 pub const ARCH_FS_ARCHIVE: &str = "archlinux-aarch64-pd-v4.6.0.tar.xz";
 
-pub const WAYLAND_SOCKET_NAME: &str = "wayland-pb";
+pub const WAYLAND_SOCKET_NAME: &str = "wayland-0";
 
 pub const MAX_PANEL_LOG_ENTRIES: usize = 100;

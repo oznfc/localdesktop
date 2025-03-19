@@ -65,6 +65,7 @@ pub struct PolarBearApp {
     clock: Clock<Monotonic>,
     key_counter: u32,
     scale_factor: f64,
+    android_app: AndroidApp,
 }
 
 impl PolarBearApp {
@@ -84,10 +85,10 @@ impl PolarBearApp {
         // Step 2. Install dependencies if not already installed
         let compositor = setup(SetupOptions {
             username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-            checking_command: "pacman -Qg plasma".to_string(),
-            install_packages: "plasma".to_string(),
+            checking_command: "pacman -Q xorg-xwayland && pacman -Qg xfce4".to_string(),
+            install_packages: "xorg-xwayland xfce4".to_string(),
             log: Box::new(log.clone()),
-            android_app,
+            android_app: android_app.clone(),
         });
 
         Self {
@@ -97,6 +98,7 @@ impl PolarBearApp {
             clock: Clock::new(),
             key_counter: 0,
             scale_factor: 1.0,
+            android_app,
         }
     }
 
@@ -147,12 +149,7 @@ impl ApplicationHandler for PolarBearApp {
         });
 
         thread::spawn(move || {
-            let launch_command =
-                "XDG_SESSION_DESKTOP=KDE XDG_CURRENT_DESKTOP=KDE /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland".to_string();
-            // let launch_command = format!("weston --fullscreen --scale={}", scale_factor);
-            // let launch_command =
-            //     "XDG_SESSION_DESKTOP=LXQT XDG_CURRENT_DESKTOP=LXQT dbus-launch startlxqt"
-            //         .to_string();
+            let launch_command = "dbus-launch startxfce4".to_string();
             launch(launch_command);
         });
     }

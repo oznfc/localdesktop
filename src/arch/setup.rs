@@ -65,9 +65,8 @@ pub fn setup(options: SetupOptions) -> PolarBearCompositor {
 
 pub fn launch(launch_command: String) {
     let full_launch_command = &format!(
-        "HOME=/home/teddy USER=teddy XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} XDG_SESSION_TYPE=wayland {} 2>&1",
+        "XDG_RUNTIME_DIR={} Xwayland -hidpi :1 2>&1 & XDG_SESSION_TYPE=x11 DISPLAY=:1 {} 2>&1",
         config::XDG_RUNTIME_DIR,
-        config::WAYLAND_SOCKET_NAME,
         launch_command
     );
     ArchProcess::exec(&full_launch_command).with_log(|it| {
