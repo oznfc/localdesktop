@@ -85,8 +85,9 @@ impl PolarBearApp {
         // Step 2. Install dependencies if not already installed
         let compositor = setup(SetupOptions {
             username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-            checking_command: "pacman -Q xorg-xwayland && pacman -Qg xfce4".to_string(),
-            install_packages: "xorg-xwayland xfce4".to_string(),
+            checking_command: "pacman -Q xorg-xwayland && pacman -Qg xfce4 && pacman -Q onboard"
+                .to_string(), // TODO: Break these steps down into independent checks and installs
+            install_packages: "xorg-xwayland xfce4 onboard".to_string(),
             log: Box::new(log.clone()),
             android_app: android_app.clone(),
         });

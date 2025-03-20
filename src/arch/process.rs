@@ -37,6 +37,7 @@ impl ArchProcess {
             .arg("--bind=/dev")
             .arg("--bind=/proc")
             .arg("--bind=/sys")
+            .arg(format!("--bind={}/tmp:/dev/shm", config::ARCH_FS_ROOT))
             .arg("/usr/bin/env")
             .arg("-i")
             .arg("\"HOME=/root\"")
