@@ -1,6 +1,7 @@
 #![cfg(target_os = "android")]
 
 pub mod android_main;
+pub mod ndk;
 pub mod app {
     pub mod compositor;
     pub mod input;

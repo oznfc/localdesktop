@@ -8,6 +8,7 @@ use winit::{
 
 use crate::{
     app::polar_bear::PolarBearApp,
+    ndk::run_in_jvm,
     utils::{application_context::ApplicationContext, logging::PolarBearExpectation},
 };
 
@@ -16,10 +17,9 @@ fn android_main(android_app: AndroidApp) {
     ApplicationContext::build(&android_app);
 
     // Enable fullscreen immersive mode
-    android_app.set_window_flags(
-        WindowManagerFlags::FULLSCREEN | WindowManagerFlags::LAYOUT_IN_SCREEN,
-        WindowManagerFlags::empty(),
-    );
+    // android_app.set_window_flags(WindowManagerFlags::FULLSCREEN, WindowManagerFlags::empty());
+    // The above is not enough, check: https://github.com/rust-mobile/android-activity/issues/95
+    run_in_jvm(android_app.clone());
 
     std::env::set_var("RUST_BACKTRACE", "full");
     android_logger::init_once(
