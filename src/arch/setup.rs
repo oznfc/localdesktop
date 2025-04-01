@@ -65,7 +65,9 @@ pub fn setup(options: SetupOptions) -> PolarBearCompositor {
 
 pub fn launch(launch_command: String) {
     let full_launch_command = &format!(
-        "XDG_RUNTIME_DIR={} Xwayland -hidpi :1 2>&1 & XDG_SESSION_TYPE=x11 DISPLAY=:1 {} 2>&1",
+        "XDG_RUNTIME_DIR={} Xwayland -hidpi :1 2>&1 & \
+        while [ ! -e /tmp/.X11-unix/X1 ]; do sleep 0.1; done; \
+        XDG_SESSION_TYPE=x11 DISPLAY=:1 {} 2>&1",
         config::XDG_RUNTIME_DIR,
         launch_command
     );
