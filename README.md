@@ -12,7 +12,7 @@ Polar Bear helps you run a desktop Linux environment on your Android device.
 4. Rootful Xwayland & a desktop environment launches inside the chroot and renders back to the Android native activity.
 
 ![POC](./assets/docs/proof-of-concept.png)
-_Proof of Concept: A Pixel Tablet running the XFCE desktop environment inside a Proot-based ARM64 Linux environment. No configuration is required; just install and go._
+_Proof of Concept: A Pixel Tablet running the XFCE desktop environment inside a Proot-based ARM64 Linux. No configuration is required; just install and go._
 
 ## Getting Started
 

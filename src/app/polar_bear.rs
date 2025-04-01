@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::{panic, thread};
+use std::thread;
 
 use smithay::backend::input::{
     AbsolutePositionEvent, InputEvent, KeyboardKeyEvent, TouchEvent, TouchSlot,
@@ -320,7 +320,10 @@ impl ApplicationHandler for PolarBearApp {
                 };
                 CentralizedEvent::Input(event)
             }
-            _ => panic!("Unhandled event: {:?}", event),
+            _ => {
+                println!("Unhandled event: {:?}", event);
+                CentralizedEvent::Unsupported
+            }
         };
 
         // Handle the centralized events
@@ -515,6 +518,9 @@ pub enum CentralizedEvent {
 
     /// A redraw was requested
     Redraw,
+
+    /// TODO: Support these events
+    Unsupported,
 }
 
 pub fn send_frames_surface_tree(surface: &WlSurface, time: u32) {

@@ -1,9 +1,6 @@
 use winit::{
     event_loop::{ControlFlow, EventLoop},
-    platform::android::{
-        activity::{AndroidApp, WindowManagerFlags},
-        EventLoopBuilderExtAndroid,
-    },
+    platform::android::{activity::AndroidApp, EventLoopBuilderExtAndroid},
 };
 
 use crate::{
