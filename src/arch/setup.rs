@@ -1,11 +1,9 @@
-use winit::platform::android::activity::AndroidApp;
-
+use super::process::ArchProcess;
 use crate::{
     app::compositor::PolarBearCompositor,
     utils::{config, logging::PolarBearExpectation},
 };
-
-use super::process::ArchProcess;
+use winit::platform::android::activity::AndroidApp;
 
 pub struct SetupOptions {
     pub install_packages: String,
@@ -50,7 +48,7 @@ pub fn setup(options: SetupOptions) -> PolarBearCompositor {
         if installed {
             break; // Start the compositor now
         } else {
-            ArchProcess::exec("rm /var/lib/pacman/db.lck"); // Install dependencies
+            ArchProcess::exec("rm -f /var/lib/pacman/db.lck"); // Install dependencies
             ArchProcess::exec(&format!(
                 "stdbuf -oL pacman -Syu {} --noconfirm --noprogressbar",
                 install_packages
@@ -64,6 +62,10 @@ pub fn setup(options: SetupOptions) -> PolarBearCompositor {
 }
 
 pub fn launch(launch_command: String) {
+    // Clean up potential leftover files for display :1
+    ArchProcess::exec("rm -f /tmp/.X1-lock");
+    ArchProcess::exec("rm -f /tmp/.X11-unix/X1");
+
     let full_launch_command = &format!(
         "XDG_RUNTIME_DIR={} Xwayland -hidpi :1 2>&1 & \
         while [ ! -e /tmp/.X11-unix/X1 ]; do sleep 0.1; done; \
