@@ -13,7 +13,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::utils::draw_render_elements;
 use smithay::backend::renderer::{Color32F, Frame, Renderer};
 use smithay::input::keyboard::FilterResult;
-use smithay::input::touch::{DownEvent, UpEvent};
+use smithay::input::touch::{DownEvent, MotionEvent, UpEvent};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::{
     Clock, Monotonic, Physical, Point, Rectangle, Size, Transform, SERIAL_COUNTER,
@@ -484,6 +484,28 @@ impl ApplicationHandler for PolarBearApp {
                             &UpEvent {
                                 slot: event.slot(),
                                 serial,
+                                time,
+                            },
+                        );
+                    };
+                }
+                InputEvent::TouchMotion { event } => {
+                    let compositor = &mut self.compositor;
+                    let state = &mut compositor.state;
+                    if let Some(surface) = state
+                        .xdg_shell_state
+                        .toplevel_surfaces()
+                        .iter()
+                        .next()
+                        .cloned()
+                    {
+                        let time = compositor.start_time.elapsed().as_millis() as u32;
+                        compositor.touch.motion(
+                            state,
+                            Some((surface.wl_surface().clone(), (0f64, 0f64).into())),
+                            &MotionEvent {
+                                slot: event.slot(),
+                                location: (event.x(), event.y()).into(),
                                 time,
                             },
                         );
