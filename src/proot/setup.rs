@@ -1,6 +1,6 @@
 use super::process::ArchProcess;
 use crate::{
-    app::compositor::PolarBearCompositor,
+    wayland::compositor::Compositor,
     utils::{config, logging::PolarBearExpectation},
 };
 use winit::platform::android::activity::AndroidApp;
@@ -13,7 +13,7 @@ pub struct SetupOptions {
     pub android_app: AndroidApp,
 }
 
-pub fn setup(options: SetupOptions) -> PolarBearCompositor {
+pub fn setup(options: SetupOptions) -> Compositor {
     let SetupOptions {
         install_packages,
         checking_command,
@@ -57,7 +57,7 @@ pub fn setup(options: SetupOptions) -> PolarBearCompositor {
         }
     }
 
-    let compositor = PolarBearCompositor::build().pb_expect("Failed to build compositor");
+    let compositor = Compositor::build().pb_expect("Failed to build compositor");
     compositor
 }
 

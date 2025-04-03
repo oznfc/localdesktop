@@ -5,8 +5,9 @@ use winit::{
 
 use crate::{
     app::polar_bear::PolarBearApp,
-    ndk::run_in_jvm,
-    utils::{application_context::ApplicationContext, logging::PolarBearExpectation},
+    utils::{
+        application_context::ApplicationContext, logging::PolarBearExpectation, ndk::run_in_jvm,
+    },
 };
 
 #[no_mangle]

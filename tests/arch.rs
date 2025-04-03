@@ -1,6 +1,6 @@
 #[cfg(target_os = "android")]
 mod arch_run {
-    use polar_bear::arch::process::ArchProcess;
+    use polar_bear::proot::process::ArchProcess;
 
     #[test]
     fn compositor_should_has_an_output_global() {

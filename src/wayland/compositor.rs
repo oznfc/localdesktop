@@ -1,22 +1,15 @@
-use std::{
-    error::Error,
-    os::unix::io::OwnedFd,
-    rc::Rc,
-    sync::{Arc, Mutex},
-    time::Instant, // Added import
-};
-
+use crate::utils::socket::bind_socket;
 use smithay::{
-    backend::renderer::{gles::GlesRenderer, utils::on_commit_buffer_handler},
+    backend::renderer::utils::on_commit_buffer_handler,
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_shell,
     input::{self, keyboard::KeyboardHandle, touch::TouchHandle, Seat, SeatHandler, SeatState},
-    output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
+    output::Output,
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{protocol::wl_seat, Display},
     },
-    utils::{Logical, Serial, Size, Transform},
+    utils::{Logical, Serial, Size},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -36,21 +29,17 @@ use smithay::{
         shm::{ShmHandler, ShmState},
     },
 };
+use std::{error::Error, os::unix::io::OwnedFd, time::Instant};
 use wayland_server::{
     backend::{ClientData, ClientId, DisconnectReason},
     protocol::{
         wl_buffer,
-        wl_surface::{self, WlSurface},
+        wl_surface::{WlSurface},
     },
     Client, ListeningSocket,
 };
-use winit::platform::android::activity::AndroidApp;
 
-use crate::utils::{config, logging::PolarBearExpectation, wayland::bind_socket};
-
-use super::winit::WinitGraphicsBackend;
-
-pub struct PolarBearCompositor {
+pub struct Compositor {
     pub state: State,
     pub display: Display<State>,
     pub listener: ListeningSocket,
@@ -154,7 +143,7 @@ impl SeatHandler for State {
     fn cursor_image(&mut self, _seat: &Seat<Self>, _image: input::pointer::CursorImageStatus) {}
 }
 
-pub fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
+pub fn send_frames_surface_tree(surface: &WlSurface, time: u32) {
     with_surface_tree_downward(
         surface,
         (),
@@ -201,8 +190,8 @@ delegate_seat!(State);
 delegate_data_device!(State);
 delegate_output!(State);
 
-impl PolarBearCompositor {
-    pub fn build() -> Result<PolarBearCompositor, Box<dyn Error>> {
+impl Compositor {
+    pub fn build() -> Result<Compositor, Box<dyn Error>> {
         let display = Display::new()?;
         let dh = display.handle();
 
@@ -227,7 +216,7 @@ impl PolarBearCompositor {
             size: (1920, 1080).into(),
         };
 
-        Ok(PolarBearCompositor {
+        Ok(Compositor {
             state,
             listener,
             clients,

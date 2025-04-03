@@ -1,15 +1,17 @@
 #![cfg(target_os = "android")]
 
 pub mod android_main;
-pub mod ndk;
 pub mod app {
+    pub mod event_handler;
+    pub mod polar_bear;
+}
+pub mod wayland {
     pub mod compositor;
     pub mod input;
     pub mod keymap;
-    pub mod polar_bear;
-    pub mod winit;
+    pub mod winit_backend;
 }
-pub mod arch {
+pub mod proot {
     pub mod process;
     pub mod scaffold;
     pub mod setup;
@@ -18,6 +20,6 @@ pub mod utils {
     pub mod application_context;
     pub mod config;
     pub mod logging;
-    pub mod toast;
-    pub mod wayland;
+    pub mod ndk;
+    pub mod socket;
 }
