@@ -1,9 +1,9 @@
-use super::polar_bear::PolarBearApp;
+use super::build::PolarBearApp;
 use crate::proot::setup::launch;
 use crate::utils::config;
 use crate::utils::logging::PolarBearExpectation;
-use crate::wayland::compositor::{send_frames_surface_tree, ClientState};
 use crate::wayland::compositor::State;
+use crate::wayland::compositor::{send_frames_surface_tree, ClientState};
 use crate::wayland::input::{
     RelativePosition, WinitInput, WinitKeyboardInputEvent, WinitMouseInputEvent,
     WinitMouseMovedEvent, WinitMouseWheelEvent, WinitTouchCancelledEvent, WinitTouchEndedEvent,
@@ -55,6 +55,12 @@ pub enum CentralizedEvent {
 
     /// TODO: Support these events
     Unsupported,
+}
+
+impl PolarBearApp {
+    fn timestamp(&self) -> u64 {
+        self.data.clock.now().as_millis() as u64
+    }
 }
 
 impl ApplicationHandler for PolarBearApp {

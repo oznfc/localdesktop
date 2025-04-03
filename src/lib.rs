@@ -2,8 +2,8 @@
 
 pub mod android_main;
 pub mod app {
-    pub mod event_handler;
-    pub mod polar_bear;
+    pub mod build;
+    pub mod run;
 }
 pub mod wayland {
     pub mod compositor;

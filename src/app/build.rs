@@ -9,24 +9,15 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use winit::platform::android::activity::AndroidApp;
 
-pub struct PolarBearLogging {
-    logs: VecDeque<String>,
-}
-
-impl PolarBearLogging {
-    pub fn log(&mut self, content: String) {
-        println!("🐻‍❄️ {}", content);
-        self.logs.push_back(content);
-        // Ensure the logs size stays at most 20
-        if self.logs.len() > config::MAX_PANEL_LOG_ENTRIES {
-            self.logs.pop_front();
-        }
-    }
+pub struct PolarBearApp {
+    pub frontend: PolarBearFrontend,
+    pub backend: PolarBearBackend,
+    pub data: PolarBearData,
 }
 
 pub struct PolarBearFrontend {
-    pub logging: Arc<Mutex<PolarBearLogging>>,
     pub android_app: AndroidApp,
+    pub log: Arc<Mutex<PolarBearLog>>,
 }
 
 pub struct PolarBearBackend {
@@ -40,15 +31,24 @@ pub struct PolarBearData {
     pub scale_factor: f64,
 }
 
-pub struct PolarBearApp {
-    pub frontend: PolarBearFrontend,
-    pub backend: PolarBearBackend,
-    pub data: PolarBearData,
+pub struct PolarBearLog {
+    logs: VecDeque<String>,
+}
+
+impl PolarBearLog {
+    pub fn log(&mut self, content: String) {
+        println!("🐻‍❄️ {}", content);
+        self.logs.push_back(content);
+        // Ensure the logs size stays at most 20
+        if self.logs.len() > config::MAX_PANEL_LOG_ENTRIES {
+            self.logs.pop_front();
+        }
+    }
 }
 
 impl PolarBearApp {
     pub fn build(android_app: AndroidApp) -> Self {
-        let logging: Arc<Mutex<PolarBearLogging>> = Arc::new(Mutex::new(PolarBearLogging {
+        let logging: Arc<Mutex<PolarBearLog>> = Arc::new(Mutex::new(PolarBearLog {
             logs: VecDeque::new(),
         }));
 
@@ -72,7 +72,7 @@ impl PolarBearApp {
 
         Self {
             frontend: PolarBearFrontend {
-                logging,
+                log: logging,
                 android_app,
             },
             backend: PolarBearBackend {
@@ -85,9 +85,5 @@ impl PolarBearApp {
                 scale_factor: 1.0,
             },
         }
-    }
-
-    pub fn timestamp(&self) -> u64 {
-        self.data.clock.now().as_millis() as u64
     }
 }

@@ -4,7 +4,7 @@ use winit::{
 };
 
 use crate::{
-    app::polar_bear::PolarBearApp,
+    app::build::PolarBearApp,
     utils::{
         application_context::ApplicationContext, logging::PolarBearExpectation, ndk::run_in_jvm,
     },
@@ -38,6 +38,9 @@ fn android_main(android_app: AndroidApp) {
     // input, and uses significantly less power/CPU time than ControlFlow::Poll.
     event_loop.set_control_flow(ControlFlow::Wait);
 
+    // Phase 1: Setup
     let mut app = PolarBearApp::build(android_app);
+
+    // Phase 2: Run
     event_loop.run_app(&mut app).pb_expect("Failed to run app");
 }
