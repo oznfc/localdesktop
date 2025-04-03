@@ -110,7 +110,7 @@ impl ApplicationHandler for PolarBearApp {
         });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         // Map raw events to our own events
         let event = match event {
             WindowEvent::Resized(size) => {
@@ -460,7 +460,7 @@ impl ApplicationHandler for PolarBearApp {
                 InputEvent::TouchUp { event } => {
                     let compositor = &mut self.backend;
                     let state = &mut compositor.compositor.state;
-                    if let Some(surface) = state
+                    if let Some(_surface) = state
                         .xdg_shell_state
                         .toplevel_surfaces()
                         .iter()

@@ -19,6 +19,7 @@ pub mod proot {
 pub mod utils {
     pub mod application_context;
     pub mod config;
+    pub mod fullscreen_immersive;
     pub mod logging;
     pub mod ndk;
     pub mod socket;
