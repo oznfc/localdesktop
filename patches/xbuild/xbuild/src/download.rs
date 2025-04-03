@@ -119,8 +119,17 @@ impl<'a> DownloadManager<'a> {
             .arg("target")
             .arg("add")
             .arg(target)
-            .status()?;
-        anyhow::ensure!(status.success(), "failure running rustup target add");
+            .status()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    anyhow::anyhow!(
+                        "`rustup` is not installed. Please install it using your package manager or visit https://rustup.rs/."
+                    )
+                } else {
+                    anyhow::anyhow!(e)
+                }
+            })?;
+        anyhow::ensure!(status.success(), "failure running `rustup target add`");
         Ok(())
     }
 
