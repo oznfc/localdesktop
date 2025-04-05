@@ -2,6 +2,8 @@ use super::build::PolarBearApp;
 use crate::proot::setup::launch;
 use crate::utils::config;
 use crate::utils::logging::PolarBearExpectation;
+use crate::utils::ndk::run_in_jvm;
+use crate::utils::webview::show_webview_popup;
 use crate::wayland::compositor::State;
 use crate::wayland::compositor::{send_frames_surface_tree, ClientState};
 use crate::wayland::input::{
@@ -65,6 +67,15 @@ impl PolarBearApp {
 
 impl ApplicationHandler for PolarBearApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // TODO: Remove this test
+        let url = "https://polar-bear-app.github.io";
+        run_in_jvm(
+            move |env, app| {
+                show_webview_popup(env, app, url);
+            },
+            self.frontend.android_app.clone(),
+        );
+
         let backend = bind(&event_loop);
         let window_size = backend.window_size();
         let scale_factor = backend.scale_factor();

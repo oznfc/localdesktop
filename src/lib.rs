@@ -23,4 +23,5 @@ pub mod utils {
     pub mod logging;
     pub mod ndk;
     pub mod socket;
+    pub mod webview;
 }

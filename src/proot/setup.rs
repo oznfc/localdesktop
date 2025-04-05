@@ -1,7 +1,7 @@
 use super::process::ArchProcess;
 use crate::{
+    utils::{config, logging::PolarBearExpectation, ndk::run_in_jvm, webview::show_webview_popup},
     wayland::compositor::Compositor,
-    utils::{config, logging::PolarBearExpectation},
 };
 use winit::platform::android::activity::AndroidApp;
 
