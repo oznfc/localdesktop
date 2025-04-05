@@ -7,10 +7,10 @@ use crate::{
 use smithay::utils::Clock;
 use std::{
     fs,
+    sync::mpsc::{self, Sender},
     thread::{self, JoinHandle},
 };
 use tar::Archive;
-use websocket::sync::Server;
 use winit::platform::android::activity::AndroidApp;
 use xz2::read::XzDecoder;
 
@@ -19,12 +19,13 @@ pub struct SetupOptions {
     pub checking_command: String,
     pub username: String,
     pub android_app: AndroidApp,
+    pub mpsc_sender: Sender<String>,
 }
 
 /// Setup is a process that should be done **only once** when the user installed the app.
 /// The setup process consists of several stages.
 /// Each stage is a function that takes the `SetupOptions` and returns a `StageOutput`.
-type SetupStage = Box<dyn Fn(&SetupOptions) -> StageOutput>;
+type SetupStage = Box<dyn Fn(&SetupOptions) -> StageOutput + Send>;
 
 /// Each stage should indicate whether the associated task is done previously or not.
 /// Thus, it should return a finished status if the task is done, so that the setup process can move on to the next stage.
@@ -94,6 +95,7 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
         install_packages,
         checking_command,
         username,
+        mpsc_sender,
         android_app: _,
     } = options;
 
@@ -117,6 +119,7 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
             return None;
         } else {
             let install_packages = install_packages.clone();
+            let mpsc_sender = mpsc_sender.clone();
             return Some(thread::spawn(move || {
                 ArchProcess::exec("rm -f /var/lib/pacman/db.lck"); // Install dependencies
                 ArchProcess::exec(&format!(
@@ -124,14 +127,24 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
                     install_packages
                 ))
                 .with_log(|it| {
-                    // TODO: report this via web socket
+                    mpsc_sender.send(it).pb_expect("Failed to send log message");
                 });
             }));
         }
     }
 }
 
-pub fn setup(options: SetupOptions) -> PolarBearBackend {
+pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
+    let (sender, receiver) = mpsc::channel();
+
+    let options = SetupOptions {
+        username: "polarbear".to_string(),
+        install_packages: config::PACMAN_INSTALL_PACKAGES.to_string(),
+        checking_command: config::PACMAN_CHECKING_COMMAND.to_string(),
+        android_app,
+        mpsc_sender: sender.clone(),
+    };
+
     let stages: Vec<SetupStage> = vec![
         Box::new(setup_arch_fs),        // Step 1. Setup Arch FS
         Box::new(check_proot),          // Step 2. Print uname -a
@@ -142,15 +155,23 @@ pub fn setup(options: SetupOptions) -> PolarBearBackend {
     let fully_installed = 'outer: loop {
         for (i, stage) in stages.iter().enumerate() {
             if let Some(handle) = stage(&options) {
-                // Wait for the current stage to finish
-                handle.join().pb_expect("Failed to join thread");
+                thread::spawn(move || {
+                    // Wait for the current stage to finish
+                    handle.join().pb_expect("Failed to join thread");
 
-                // Process the remaining stages in the same loop
-                for next_stage in stages.iter().skip(i + 1) {
-                    if let Some(next_handle) = next_stage(&options) {
-                        next_handle.join().pb_expect("Failed to join thread");
+                    // Process the remaining stages in the same loop
+                    for next_stage in stages.iter().skip(i + 1) {
+                        if let Some(next_handle) = next_stage(&options) {
+                            next_handle.join().pb_expect("Failed to join thread");
+                        }
                     }
-                }
+
+                    // All stages are done, we need to replace the WebviewBackend with the WaylandBackend
+                    // Or, easier, just restart the whole app
+                    sender
+                        .send("Installation finished, please restart the app".to_string())
+                        .pb_expect("Failed to send installation finished message");
+                });
 
                 // Setup is still running the background, but we need to return control
                 // so that the main thread can continue to report progress to the user
@@ -171,10 +192,6 @@ pub fn setup(options: SetupOptions) -> PolarBearBackend {
             scale_factor: 1.0,
         })
     } else {
-        let socket = Server::bind("127.0.0.1:0").pb_expect("Failed to bind socket");
-        PolarBearBackend::WebView(WebviewBackend {
-            socket,
-            last_message: String::new(),
-        })
+        PolarBearBackend::WebView(WebviewBackend::build(receiver))
     }
 }

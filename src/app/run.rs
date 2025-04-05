@@ -73,15 +73,11 @@ impl ApplicationHandler for PolarBearApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         match self.backend {
             PolarBearBackend::WebView(ref mut backend) => {
-                let port = backend
-                    .socket
-                    .local_addr()
-                    .pb_expect("Failed to find the websocket port")
-                    .port();
-                let url = "https://polar-bear-app.github.io";
+                let port = backend.socket_port;
+                let url = format!("file:///android_asset/setup-progress.html?port={}", port);
                 run_in_jvm(
                     move |env, app| {
-                        show_webview_popup(env, app, url);
+                        show_webview_popup(env, app, &url);
                     },
                     self.frontend.android_app.clone(),
                 );

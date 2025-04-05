@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to Polar Bear</title>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const params = new URLSearchParams(window.location.search);
+        const port = params.get("port");
+        const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+
+        ws.onopen = () => {
+          console.log("WebSocket connection established");
+        };
+
+        ws.onmessage = (event) => {
+          const message = event.data;
+          const progressDiv = document.getElementById("progress");
+          const newMessage = document.createElement("div");
+          newMessage.textContent = message;
+          progressDiv.appendChild(newMessage);
+        };
+
+        ws.onclose = () => {
+          console.log("WebSocket connection closed");
+        };
+
+        ws.onerror = (error) => {
+          console.error("WebSocket error:", error);
+        };
+      });
+    </script>
+  </head>
+  <body>
+    <div
+      style="display: flex; flex-direction: column; height: 100vh; width: 100vw"
+    >
+      <iframe
+        src="https://polar-bear-app.github.io"
+        style="flex: 1; border: none"
+      ></iframe>
+      <div id="progress" style="padding: 10px; background-color: #f0f0f0">
+        Installation in progress...
+      </div>
+    </div>
+  </body>
+</html>

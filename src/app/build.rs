@@ -1,10 +1,14 @@
-use crate::proot::setup::{setup, SetupOptions};
+use crate::proot::setup::setup;
+use crate::utils::logging::PolarBearExpectation;
 use crate::wayland::compositor::Compositor;
 use crate::wayland::winit_backend::WinitGraphicsBackend;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Clock, Monotonic};
-use std::net::TcpListener;
-use websocket::server::{NoTlsAcceptor, WsServer};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use websocket::sync::Server;
+use websocket::OwnedMessage;
 use winit::platform::android::activity::AndroidApp;
 
 pub struct PolarBearApp {
@@ -26,10 +30,67 @@ pub enum PolarBearBackend {
 }
 
 pub struct WebviewBackend {
-    pub socket: WsServer<NoTlsAcceptor, TcpListener>,
-    pub last_message: String,
+    pub socket_port: u16,
 }
 
+impl WebviewBackend {
+    /// Start accepting connections and listening for messages
+    pub fn build(receiver: Receiver<String>) -> Self {
+        let socket = Server::bind("127.0.0.1:0").pb_expect("Failed to bind socket");
+        let socket_port = socket.local_addr().unwrap().port();
+
+        let active_client = Arc::new(Mutex::new(None));
+        let receiver = Arc::new(Mutex::new(receiver));
+
+        let active_client_clone = active_client.clone();
+        thread::spawn(move || {
+            for request in socket.filter_map(Result::ok) {
+                let mut active_client = active_client_clone.lock().unwrap();
+
+                // Reject new connections if there is already an active client
+                if active_client.is_some() {
+                    println!("Rejecting new connection: already an active client");
+                    request.reject().unwrap();
+                    continue;
+                }
+
+                // Accept the new client
+                if !request.protocols().contains(&"rust-websocket".to_string()) {
+                    request.reject().unwrap();
+                    continue;
+                }
+
+                let client = request.use_protocol("rust-websocket").accept().unwrap();
+                let ip = client.peer_addr().unwrap();
+                println!("Connection from {}", ip);
+
+                // Store the new client
+                *active_client = Some(client); // Store the writer part of the connection
+
+                // Spawn a thread to handle messages for this client
+                let active_client_clone = active_client_clone.clone();
+                let receiver_clone = receiver.clone();
+                thread::spawn(move || {
+                    for message in receiver_clone.lock().unwrap().iter() {
+                        let message = OwnedMessage::Text(message);
+                        let mut active_client = active_client_clone.lock().unwrap();
+
+                        if let Some(writer) = active_client.as_mut() {
+                            if writer.send_message(&message).is_err() {
+                                // If sending fails, disconnect the client
+                                println!("Client disconnected");
+                                *active_client = None;
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        Self { socket_port }
+    }
+}
 pub struct WaylandBackend {
     pub compositor: Compositor,
     pub graphic_renderer: Option<WinitGraphicsBackend<GlesRenderer>>,
@@ -41,13 +102,7 @@ pub struct WaylandBackend {
 impl PolarBearApp {
     pub fn build(android_app: AndroidApp) -> Self {
         Self {
-            backend: setup(SetupOptions {
-                username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-                checking_command:
-                    "pacman -Q xorg-xwayland && pacman -Qg xfce4 && pacman -Q onboard".to_string(), // TODO: Break these steps down into independent checks and installs
-                install_packages: "xorg-xwayland xfce4 onboard".to_string(),
-                android_app: android_app.clone(),
-            }),
+            backend: setup(android_app.clone()),
             frontend: PolarBearFrontend { android_app },
         }
     }
