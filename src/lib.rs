@@ -12,8 +12,8 @@ pub mod wayland {
     pub mod winit_backend;
 }
 pub mod proot {
+    pub mod launch;
     pub mod process;
-    pub mod scaffold;
     pub mod setup;
 }
 pub mod utils {

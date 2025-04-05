@@ -15,8 +15,6 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-egui = "0.31.1"
-libloading = "0.8.6"
 xz2 = "0.1.7"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -36,6 +34,10 @@ winit = { version = "0.30.9", features = [
 ] }
 wayland-protocols = "0.32.6"
 khronos-egl = { version = "6.0.0", features = ["dynamic"] }
+libloading = "0.8.6"
+websocket = { version = "0.27.1", default-features = false, features = [
+    "sync",
+] }
 
 [target.'cfg(target_os = "android")'.dependencies.smithay]
 version = "0.5.0"
