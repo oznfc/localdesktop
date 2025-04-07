@@ -12,3 +12,8 @@ pub const ARCH_FS_ARCHIVE: &str = "archlinux-aarch64-pd-v4.6.0.tar.xz";
 pub const WAYLAND_SOCKET_NAME: &str = "wayland-0";
 
 pub const MAX_PANEL_LOG_ENTRIES: usize = 100;
+
+pub const PACMAN_CHECKING_COMMAND: &str =
+    "pacman -Q xorg-xwayland && pacman -Qg xfce4 && pacman -Q onboard";
+
+pub const PACMAN_INSTALL_PACKAGES: &str = "xorg-xwayland xfce4 onboard";

@@ -1,89 +1,122 @@
-use crate::proot::scaffold::scaffold;
-use crate::proot::setup::{setup, SetupOptions};
-use crate::utils::config;
+use crate::proot::setup::setup;
+use crate::utils::logging::PolarBearExpectation;
 use crate::wayland::compositor::Compositor;
 use crate::wayland::winit_backend::WinitGraphicsBackend;
+use serde_json::json;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Clock, Monotonic};
-use std::collections::VecDeque;
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use websocket::sync::Server;
+use websocket::OwnedMessage;
 use winit::platform::android::activity::AndroidApp;
 
 pub struct PolarBearApp {
     pub frontend: PolarBearFrontend,
     pub backend: PolarBearBackend,
-    pub data: PolarBearData,
 }
 
 pub struct PolarBearFrontend {
     pub android_app: AndroidApp,
-    pub log: Arc<Mutex<PolarBearLog>>,
 }
 
-pub struct PolarBearBackend {
+pub enum PolarBearBackend {
+    /// Use a webview to report setup progress to the user
+    /// The setup progress should only be done once, when the user first installed the app
+    WebView(WebviewBackend),
+
+    /// Use a wayland compositor to render Linux GUI applications back to the Android Native Activity
+    Wayland(WaylandBackend),
+}
+
+pub struct WebviewBackend {
+    pub socket_port: u16,
+    pub progress: Arc<Mutex<u16>>, // 0-100
+}
+
+impl WebviewBackend {
+    /// Start accepting connections and listening for messages
+    pub fn build(receiver: Receiver<String>, progress: Arc<Mutex<u16>>) -> Self {
+        let socket = Server::bind("127.0.0.1:0").pb_expect("Failed to bind socket");
+        let socket_port = socket.local_addr().unwrap().port();
+
+        let active_client = Arc::new(Mutex::new(None));
+        let receiver = Arc::new(Mutex::new(receiver));
+
+        let active_client_clone = active_client.clone();
+        let progress_clone = progress.clone();
+        thread::spawn(move || {
+            for request in socket.filter_map(Result::ok) {
+                let mut active_client = active_client_clone.lock().unwrap();
+
+                // Reject new connections if there is already an active client
+                if active_client.is_some() {
+                    println!("Rejecting new connection: already an active client");
+                    request.reject().unwrap();
+                    continue;
+                }
+
+                // Accept the new client
+                if !request.protocols().contains(&"rust-websocket".to_string()) {
+                    request.reject().unwrap();
+                    continue;
+                }
+
+                let client = request.use_protocol("rust-websocket").accept().unwrap();
+                let ip = client.peer_addr().unwrap();
+                println!("Connection from {}", ip);
+
+                // Store the new client
+                *active_client = Some(client); // Store the writer part of the connection
+
+                // Spawn a thread to handle messages for this client
+                let active_client_clone = active_client_clone.clone();
+                let receiver_clone = receiver.clone();
+                let progress_clone = progress_clone.clone();
+                thread::spawn(move || {
+                    for message in receiver_clone.lock().unwrap().iter() {
+                        let progress = *progress_clone.lock().unwrap();
+                        let json_message = json!({
+                            "progress": progress,
+                            "message": message
+                        });
+
+                        let message = OwnedMessage::Text(json_message.to_string());
+                        let mut active_client = active_client_clone.lock().unwrap();
+
+                        if let Some(writer) = active_client.as_mut() {
+                            if writer.send_message(&message).is_err() {
+                                // If sending fails, disconnect the client
+                                println!("Client disconnected");
+                                *active_client = None;
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        Self {
+            socket_port,
+            progress,
+        }
+    }
+}
+pub struct WaylandBackend {
     pub compositor: Compositor,
     pub graphic_renderer: Option<WinitGraphicsBackend<GlesRenderer>>,
-}
-
-pub struct PolarBearData {
     pub clock: Clock<Monotonic>,
     pub key_counter: u32,
     pub scale_factor: f64,
 }
 
-pub struct PolarBearLog {
-    logs: VecDeque<String>,
-}
-
-impl PolarBearLog {
-    pub fn log(&mut self, content: String) {
-        println!("🐻‍❄️ {}", content);
-        self.logs.push_back(content);
-        // Ensure the logs size stays at most 20
-        if self.logs.len() > config::MAX_PANEL_LOG_ENTRIES {
-            self.logs.pop_front();
-        }
-    }
-}
-
 impl PolarBearApp {
     pub fn build(android_app: AndroidApp) -> Self {
-        let logging: Arc<Mutex<PolarBearLog>> = Arc::new(Mutex::new(PolarBearLog {
-            logs: VecDeque::new(),
-        }));
-
-        let cloned_logging = logging.clone();
-        let log = move |it| {
-            cloned_logging.lock().unwrap().log(it);
-        };
-
-        // Step 1. Setup Arch FS if not already installed
-        scaffold(android_app.clone(), Box::new(log.clone()));
-
-        // Step 2. Install dependencies if not already installed
-        let compositor = setup(SetupOptions {
-            username: "teddy".to_string(), // todo!("Ask the user what username they want to use, and load the answer from somewhere")
-            checking_command: "pacman -Q xorg-xwayland && pacman -Qg xfce4 && pacman -Q onboard"
-                .to_string(), // TODO: Break these steps down into independent checks and installs
-            install_packages: "xorg-xwayland xfce4 onboard".to_string(),
-            log: Box::new(log.clone()),
-            android_app: android_app.clone(),
-        });
-
         Self {
-            frontend: PolarBearFrontend {
-                log: logging,
-                android_app,
-            },
-            backend: PolarBearBackend {
-                compositor,
-                graphic_renderer: None,
-            },
-            data: PolarBearData {
-                clock: Clock::new(),
-                key_counter: 0,
-                scale_factor: 1.0,
-            },
+            backend: setup(android_app.clone()),
+            frontend: PolarBearFrontend { android_app },
         }
     }
 }
