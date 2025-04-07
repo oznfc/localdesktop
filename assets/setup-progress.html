@@ -4,45 +4,169 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Welcome to Polar Bear</title>
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        const params = new URLSearchParams(window.location.search);
-        const port = params.get("port");
-        const ws = new WebSocket(`ws://127.0.0.1:${port}`, "rust-websocket"); // If you don't specify "rust-websocket" as the protocol, Error 400 during WebSocket handshake will be thrown.
-
-        ws.onopen = () => {
-          console.log("WebSocket connection established");
-        };
-
-        ws.onmessage = (event) => {
-          const message = event.data;
-          const progressDiv = document.getElementById("progress");
-          const newMessage = document.createElement("div");
-          newMessage.textContent = message;
-          progressDiv.appendChild(newMessage);
-        };
-
-        ws.onclose = () => {
-          console.log("WebSocket connection closed");
-        };
-
-        ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
-        };
-      });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3"></script>
+    <style>
+      ::selection {
+        background-color: rgba(144, 238, 144, 0.5);
+      }
+    </style>
   </head>
   <body style="margin: 0">
     <div
       style="display: flex; flex-direction: column; height: 100vh; width: 100vw"
     >
-      <iframe
-        src="https://polar-bear-app.github.io"
-        style="flex: 1; border: none"
-      ></iframe>
-      <div id="progress" style="padding: 10px; background-color: #f0f0f0">
-        Installation in progress...
+      <div style="flex: 1; position: relative">
+        <iframe
+          src="https://polar-bear-app.github.io/docs/user/getting-started"
+          style="border: none; width: 100%; height: 100%"
+        ></iframe>
+        <div
+          v-show="showFullLog"
+          style="
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow-y: auto;
+            background-color: rgba(30, 30, 30);
+            color: white;
+            font-family: monospace;
+            padding: 10px;
+            z-index: 1;
+            display: flex;
+            flex-direction: column-reverse; /* Reverse the order of logs */
+          "
+        >
+          <div
+            v-for="log in logs"
+            :key="log.id"
+            style="display: flex; margin-bottom: 5px; color: white"
+          >
+            <div
+              style="
+                color: gray;
+                font-weight: bold;
+                margin-right: 10px;
+                flex-shrink: 0;
+              "
+            >
+              {{ new Date(log.timestamp).toLocaleTimeString() }}
+            </div>
+            <div style="flex: 1">{{ log.message }}</div>
+          </div>
+        </div>
+      </div>
+      <div
+        @click="toggleView"
+        style="
+          position: relative;
+          flex: none;
+          padding: 10px;
+          background-color: black;
+          font-family: monospace;
+          display: flex;
+          justify-content: space-between;
+          color: white;
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+          user-select: none;
+        "
+      >
+        <div
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            height: '100%',
+            width: progress + '%',
+            backgroundColor: '#006400',
+            zIndex: 0
+          }"
+        ></div>
+        <span
+          style="
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            position: relative;
+            z-index: 1;
+            padding-right: 12px;
+          "
+        >
+          {{ message }}
+        </span>
+        <span style="flex: none; position: relative; z-index: 1"
+          ><span>{{ progress }}</span>%
+        </span>
       </div>
     </div>
+
+    <script>
+      const app = Vue.createApp({
+        data() {
+          return {
+            showFullLog: false, // Toggle state for log view
+            progress: 0,
+            logs: [], // Array to store log messages
+            logCounter: 0, // Incremental counter for unique log IDs
+          };
+        },
+        computed: {
+          message() {
+            // Get the message from the last log entry, or use a default message
+            return this.logs[0]?.message || "Installing...";
+          },
+        },
+        methods: {
+          toggleView() {
+            this.showFullLog = !this.showFullLog;
+          },
+          handleWebSocketMessage(data) {
+            this.progress = data.progress;
+
+            // Alert when progress reaches 100
+            if (this.progress === 100) {
+              alert("Installation finished, please restart the app!");
+            }
+
+            // Add log entry and keep only the latest 100 logs
+            this.logs.unshift({
+              id: this.logCounter++, // Use incrementing counter for unique ID
+              timestamp: Date.now(), // Store timestamp separately for rendering
+              message: data.message,
+            });
+            if (this.logs.length > 100) {
+              this.logs.pop();
+            }
+          },
+        },
+        mounted() {
+          const params = new URLSearchParams(window.location.search);
+          const port = params.get("port");
+          const ws = new WebSocket(`ws://127.0.0.1:${port}`, "rust-websocket");
+
+          ws.onopen = () => {
+            console.log("WebSocket connection established");
+          };
+
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleWebSocketMessage(data);
+          };
+
+          ws.onclose = () => {
+            console.log("WebSocket connection closed");
+          };
+
+          ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+          };
+        },
+      });
+
+      app.mount("body > div");
+    </script>
   </body>
 </html>

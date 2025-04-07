@@ -7,7 +7,10 @@ use crate::{
 use smithay::utils::Clock;
 use std::{
     fs,
-    sync::mpsc::{self, Sender},
+    sync::{
+        mpsc::{self, Sender},
+        Arc, Mutex,
+    },
     thread::{self, JoinHandle},
 };
 use tar::Archive;
@@ -44,9 +47,11 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
             .is_none()
     {
         let android_app = options.android_app.clone();
+        let mpsc_sender = options.mpsc_sender.clone();
         return Some(thread::spawn(move || {
-            println!("Arch Linux is not installed! Installing...");
-            println!("(This may take a few minutes.)");
+            mpsc_sender
+                .send("Extracting Arch Linux FS...".to_string())
+                .pb_expect("Failed to send log message");
 
             let tar_file = android_app
                 .asset_manager()
@@ -75,11 +80,6 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     } else {
         return None;
     }
-}
-
-fn check_proot(_options: &SetupOptions) -> StageOutput {
-    ArchProcess::exec("uname -a");
-    None
 }
 
 fn fix_tmp_permissions(_options: &SetupOptions) -> StageOutput {
@@ -148,6 +148,7 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
 
 pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     let (sender, receiver) = mpsc::channel();
+    let progress = Arc::new(Mutex::new(0));
 
     let options = SetupOptions {
         username: "polarbear".to_string(),
@@ -159,34 +160,44 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
 
     let stages: Vec<SetupStage> = vec![
         Box::new(setup_arch_fs),        // Step 1. Setup Arch FS
-        Box::new(check_proot),          // Step 2. Print uname -a
-        Box::new(fix_tmp_permissions),  // Step 3. Fix /tmp permissions
-        Box::new(create_normal_user),   // Step 4. Create normal user
-        Box::new(install_dependencies), // Step 5. Install dependencies
+        Box::new(create_normal_user),   // Step 2. Create normal user
+        Box::new(install_dependencies), // Step 3. Install dependencies
     ];
 
     let fully_installed = 'outer: loop {
         for (i, stage) in stages.iter().enumerate() {
             if let Some(handle) = stage(&options) {
+                let progress_clone = progress.clone();
                 thread::spawn(move || {
+                    let progress = progress_clone;
+                    let progress_value = ((i) as u16 * 100 / stages.len() as u16) as u16;
+                    *progress.lock().unwrap() = progress_value;
                     // Wait for the current stage to finish
                     handle.join().pb_expect("Failed to join thread");
 
                     // Process the remaining stages in the same loop
-                    for next_stage in stages.iter().skip(i + 1) {
+                    for (j, next_stage) in stages.iter().enumerate().skip(i + 1) {
+                        let progress_value = ((j) as u16 * 100 / stages.len() as u16) as u16;
+                        *progress.lock().unwrap() = progress_value;
                         if let Some(next_handle) = next_stage(&options) {
                             next_handle.join().pb_expect("Failed to join thread");
+
+                            // Increment progress and send it
+                            let next_progress_value =
+                                ((j + 1) as u16 * 100 / stages.len() as u16) as u16;
+                            *progress.lock().unwrap() = next_progress_value;
                         }
                     }
 
                     // All stages are done, we need to replace the WebviewBackend with the WaylandBackend
                     // Or, easier, just restart the whole app
+                    *progress.lock().unwrap() = 100;
                     sender
                         .send("Installation finished, please restart the app".to_string())
                         .pb_expect("Failed to send installation finished message");
                 });
 
-                // Setup is still running the background, but we need to return control
+                // Setup is still running in the background, but we need to return control
                 // so that the main thread can continue to report progress to the user
                 break 'outer false;
             }
@@ -205,6 +216,6 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
             scale_factor: 1.0,
         })
     } else {
-        PolarBearBackend::WebView(WebviewBackend::build(receiver))
+        PolarBearBackend::WebView(WebviewBackend::build(receiver, progress))
     }
 }

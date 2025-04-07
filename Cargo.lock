@@ -3593,6 +3593,8 @@ dependencies = [
  "libloading",
  "log 0.4.22",
  "mockall",
+ "serde",
+ "serde_json",
  "smithay",
  "tar",
  "wayland-protocols",

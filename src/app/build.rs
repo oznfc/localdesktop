@@ -2,6 +2,7 @@ use crate::proot::setup::setup;
 use crate::utils::logging::PolarBearExpectation;
 use crate::wayland::compositor::Compositor;
 use crate::wayland::winit_backend::WinitGraphicsBackend;
+use serde_json::json;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Clock, Monotonic};
 use std::sync::mpsc::Receiver;
@@ -31,11 +32,12 @@ pub enum PolarBearBackend {
 
 pub struct WebviewBackend {
     pub socket_port: u16,
+    pub progress: Arc<Mutex<u16>>, // 0-100
 }
 
 impl WebviewBackend {
     /// Start accepting connections and listening for messages
-    pub fn build(receiver: Receiver<String>) -> Self {
+    pub fn build(receiver: Receiver<String>, progress: Arc<Mutex<u16>>) -> Self {
         let socket = Server::bind("127.0.0.1:0").pb_expect("Failed to bind socket");
         let socket_port = socket.local_addr().unwrap().port();
 
@@ -43,6 +45,7 @@ impl WebviewBackend {
         let receiver = Arc::new(Mutex::new(receiver));
 
         let active_client_clone = active_client.clone();
+        let progress_clone = progress.clone();
         thread::spawn(move || {
             for request in socket.filter_map(Result::ok) {
                 let mut active_client = active_client_clone.lock().unwrap();
@@ -70,9 +73,16 @@ impl WebviewBackend {
                 // Spawn a thread to handle messages for this client
                 let active_client_clone = active_client_clone.clone();
                 let receiver_clone = receiver.clone();
+                let progress_clone = progress_clone.clone();
                 thread::spawn(move || {
                     for message in receiver_clone.lock().unwrap().iter() {
-                        let message = OwnedMessage::Text(message);
+                        let progress = *progress_clone.lock().unwrap();
+                        let json_message = json!({
+                            "progress": progress,
+                            "message": message
+                        });
+
+                        let message = OwnedMessage::Text(json_message.to_string());
                         let mut active_client = active_client_clone.lock().unwrap();
 
                         if let Some(writer) = active_client.as_mut() {
@@ -88,7 +98,10 @@ impl WebviewBackend {
             }
         });
 
-        Self { socket_port }
+        Self {
+            socket_port,
+            progress,
+        }
     }
 }
 pub struct WaylandBackend {
