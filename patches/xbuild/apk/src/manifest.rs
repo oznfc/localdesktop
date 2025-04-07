@@ -82,6 +82,8 @@ pub struct Application {
     #[serde(rename(serialize = "activity"))]
     #[serde(default)]
     pub activities: Vec<Activity>,
+    #[serde(rename(serialize = "android:usesCleartextTraffic"))]
+    pub use_cleartext_traffic: Option<bool>,
 }
 
 /// Android [activity element](https://developer.android.com/guide/topics/manifest/activity-element).

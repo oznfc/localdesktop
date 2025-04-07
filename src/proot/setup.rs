@@ -90,48 +90,60 @@ fn fix_tmp_permissions(_options: &SetupOptions) -> StageOutput {
     None
 }
 
+fn create_normal_user(options: &SetupOptions) -> StageOutput {
+    let username = options.username.clone();
+    if !ArchProcess::exec(&format!("id {username}"))
+        .wait_with_output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+    {
+        let command = format!("useradd -m -G wheel {username} && passwd -d {username}");
+        ArchProcess::exec(&command)
+            .wait()
+            .pb_expect(&format!("{} failed", command));
+    }
+
+    None
+}
+
 fn install_dependencies(options: &SetupOptions) -> StageOutput {
     let SetupOptions {
         install_packages,
         checking_command,
-        username,
         mpsc_sender,
+        username: _,
         android_app: _,
     } = options;
 
-    loop {
-        if !ArchProcess::exec(&format!("id {username}"))
-            .wait_with_output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-        {
-            let command = format!("useradd -m -G wheel {username} && passwd -d {username}");
-            ArchProcess::exec(&command)
-                .wait()
-                .pb_expect(&format!("{} failed", command));
-        }
-
-        let installed = ArchProcess::exec(&checking_command)
+    let checking_command = checking_command.clone();
+    let installed = move || {
+        ArchProcess::exec(&checking_command)
             .wait()
             .pb_expect("Failed to check whether the installation target is installed")
-            .success();
-        if installed {
-            return None;
-        } else {
-            let install_packages = install_packages.clone();
-            let mpsc_sender = mpsc_sender.clone();
-            return Some(thread::spawn(move || {
-                ArchProcess::exec("rm -f /var/lib/pacman/db.lck"); // Install dependencies
-                ArchProcess::exec(&format!(
-                    "stdbuf -oL pacman -Syu {} --noconfirm --noprogressbar",
-                    install_packages
-                ))
-                .with_log(|it| {
-                    mpsc_sender.send(it).pb_expect("Failed to send log message");
-                });
-            }));
-        }
+            .success()
+    };
+
+    if installed() {
+        return None;
     }
+
+    let install_packages = install_packages.clone();
+    let mpsc_sender = mpsc_sender.clone();
+    return Some(thread::spawn(move || {
+        loop {
+            ArchProcess::exec("rm -f /var/lib/pacman/db.lck"); // Install dependencies
+            ArchProcess::exec(&format!(
+                "stdbuf -oL pacman -Syu {} --noconfirm --noprogressbar",
+                install_packages
+            ))
+            .with_log(|it| {
+                mpsc_sender.send(it).pb_expect("Failed to send log message");
+            });
+            if installed() {
+                break;
+            }
+        }
+    }));
 }
 
 pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
@@ -149,7 +161,8 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
         Box::new(setup_arch_fs),        // Step 1. Setup Arch FS
         Box::new(check_proot),          // Step 2. Print uname -a
         Box::new(fix_tmp_permissions),  // Step 3. Fix /tmp permissions
-        Box::new(install_dependencies), // Step 4. Install dependencies
+        Box::new(create_normal_user),   // Step 4. Create normal user
+        Box::new(install_dependencies), // Step 5. Install dependencies
     ];
 
     let fully_installed = 'outer: loop {

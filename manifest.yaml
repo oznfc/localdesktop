@@ -2,6 +2,7 @@ icon: assets/ic_launcher/1024.png
 android:
   assets:
     - assets/archlinux-aarch64-pd-v4.6.0.tar.xz
+    - assets/setup-progress.html
   runtime_libs:
     - assets/libs
   manifest:
@@ -11,6 +12,7 @@ android:
       target_sdk_version: 33
     application:
       label: "Polar Bear"
+      use_cleartext_traffic: true # Required for connecting to ws://127.0.0.1, see assets/setup-progress.html
     uses_permission:
       - name: android.permission.INTERNET
       - name: android.permission.ACCESS_NETWORK_STATE
