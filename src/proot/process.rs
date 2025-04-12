@@ -31,6 +31,7 @@ impl ArchProcess {
             .arg(config::ARCH_FS_ROOT)
             .arg("-L")
             .arg("--link2symlink")
+            .arg("--sysvipc")
             .arg("--kill-on-exit")
             .arg("--root-id")
             .arg("--cwd=/root")
