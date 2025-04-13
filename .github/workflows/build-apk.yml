@@ -1,0 +1,39 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install LLVM
+        run: sudo apt-get update && sudo apt-get install -y llvm
+
+      - name: Build xbuild
+        working-directory: patches/xbuild
+        run: cargo install --path xbuild
+
+      - name: Build APK
+        run: x build --release --platform=android --arch=arm64
+
+      - name: Extract version
+        id: extract_version
+        run: echo "version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: polar-bear-${{ steps.extract_version.outputs.version }}.apk
+          path: target/x/release/android/polar-bear.apk
