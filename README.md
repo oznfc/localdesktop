@@ -2,7 +2,7 @@
 
 Polar Bear helps you run a desktop Linux environment on your Android device.
 
-> This is a Rust rewrite of the original [Polar Bear](https://github.com/polar-bear-app/polar-bear-app) project, which was written in Kotlin and C++. The aim of this rewrite is to make it more stable, portable, and able to do the development work on Android.
+> New Polar Bear is a Rust rewrite of the original [Polar Bear](https://github.com/polar-bear-app/legacy) project, which was written in Kotlin and C++. The aim of this rewrite is to make it more stable, portable, and able to do the development work on Android.
 
 ## How it works
 

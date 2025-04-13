@@ -132,7 +132,6 @@ fn run_integration_tests_on_android() {
             let assets = [
                 "assets/libs/arm64-v8a/proot.so",
                 "assets/libs/arm64-v8a/loader.so",
-                "assets/libs/arm64-v8a/tar.so",
                 "assets/arch.tar",
             ];
             for asset in assets {
@@ -162,20 +161,29 @@ fn run_integration_tests_on_android() {
                 }
 
                 if asset.ends_with(".tar") {
-                    // tar -xf <tar_file> -C <dest_dir>
-                    let mut adb_shell = Command::new("adb");
-                    adb_shell.arg("-s").arg(device);
-                    adb_shell.arg("shell");
-                    adb_shell.arg(format!(
-                        "/data/local/tmp/tar.so -xf /data/local/tmp/{} -C /data/local/tmp && mv archlinux-aarch64 arch && rm /data/local/tmp/{}",
-                        file_name,
-                        file_name
-                    ));
-                    let status = adb_shell
-                        .status()
-                        .expect("Failed to execute adb shell")
-                        .code();
-                    assert_eq!(status, Some(0));
+                    use std::ffi::CString;
+                    use tar::Archive;
+                    use xz2::read::XzDecoder;
+
+                    // Open the .tar.xz file as an asset from disk
+                    let tar_file =
+                        std::fs::File::open(cwd.join(asset)).expect("Failed to open .tar.xz file");
+
+                    // Clean up any previous extracted directory
+                    let extracted_dir = std::path::Path::new("/data/local/tmp/archlinux-aarch64");
+                    let _ = std::fs::remove_dir_all(&extracted_dir);
+
+                    // Extract the tar file directly to the target directory
+                    let tar = XzDecoder::new(tar_file);
+                    let mut archive = Archive::new(tar);
+                    archive
+                        .unpack("/data/local/tmp")
+                        .expect("Failed to extract Arch Linux FS .tar.xz file");
+
+                    // Move the extracted files to the desired final destination
+                    let final_dir = std::path::Path::new("/data/local/tmp/arch");
+                    std::fs::rename(extracted_dir, final_dir)
+                        .expect("Failed to rename extracted files to final destination");
                 }
             }
 
