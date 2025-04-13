@@ -43,7 +43,8 @@ impl ArchProcess {
             .arg("-i")
             .arg("\"HOME=/root\"")
             .arg("\"LANG=C.UTF-8\"")
-            .arg("\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"")
+            .arg("\"MOZ_FAKE_NO_SANDBOX=1\"")
+            .arg("\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games:/system/bin:/system/xbin\"")
             .arg("\"TMPDIR=/tmp\"");
         if self.user == "root" {
             process.arg("sh");
