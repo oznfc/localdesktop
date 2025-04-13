@@ -3598,7 +3598,6 @@ dependencies = [
  "smithay",
  "tar",
  "wayland-protocols",
- "wayland-server",
  "websocket",
  "winit",
  "xbuild",

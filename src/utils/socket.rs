@@ -1,6 +1,5 @@
+use smithay::reexports::wayland_server::ListeningSocket;
 use std::{error::Error, path::PathBuf};
-
-use wayland_server::ListeningSocket;
 
 use crate::utils::config;
 

@@ -1,4 +1,9 @@
 use crate::utils::socket::bind_socket;
+use smithay::reexports::wayland_server::{
+    backend::{ClientData, ClientId, DisconnectReason},
+    protocol::{wl_buffer, wl_surface::WlSurface},
+    Client, ListeningSocket,
+};
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
@@ -30,14 +35,6 @@ use smithay::{
     },
 };
 use std::{error::Error, os::unix::io::OwnedFd, time::Instant};
-use wayland_server::{
-    backend::{ClientData, ClientId, DisconnectReason},
-    protocol::{
-        wl_buffer,
-        wl_surface::{WlSurface},
-    },
-    Client, ListeningSocket,
-};
 
 pub struct Compositor {
     pub state: State,
