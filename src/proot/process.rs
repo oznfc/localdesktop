@@ -19,11 +19,11 @@ impl ArchProcess {
         let context = get_application_context().pb_expect("Failed to get application context");
 
         #[cfg(not(test))]
-        let proot_loader = context.native_library_dir.join("loader.so");
+        let proot_loader = context.native_library_dir.join("libproot_loader.so");
         #[cfg(test)]
-        let proot_loader = "/data/local/tmp/loader.so";
+        let proot_loader = "/data/local/tmp/libproot_loader.so";
 
-        let mut process = Command::new(context.native_library_dir.join("proot.so"));
+        let mut process = Command::new(context.native_library_dir.join("libproot.so"));
         process
             .env("PROOT_LOADER", proot_loader)
             .env("PROOT_TMP_DIR", config::ARCH_FS_ROOT)

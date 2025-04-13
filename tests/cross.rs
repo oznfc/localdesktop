@@ -130,8 +130,8 @@ fn run_integration_tests_on_android() {
 
             // push mock assets to device
             let assets = [
-                "assets/libs/arm64-v8a/proot.so",
-                "assets/libs/arm64-v8a/loader.so",
+                "assets/libs/arm64-v8a/libproot.so",
+                "assets/libs/arm64-v8a/libproot_loader.so",
                 "assets/arch.tar",
             ];
             for asset in assets {
