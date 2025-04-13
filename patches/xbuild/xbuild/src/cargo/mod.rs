@@ -314,6 +314,8 @@ impl CargoBuild {
         self.add_link_arg(&format!("-B{}", sdk_lib_dir.display()));
         self.add_link_arg(&format!("-L{}", sdk_lib_dir.display()));
         self.add_link_arg(&format!("-L{}", lib_dir.display()));
+        self.add_link_arg("-Wl,-z,max-page-size=16384");
+
         Ok(())
     }
 
