@@ -50,3 +50,5 @@ Recommended setup:
 ![Debugging Capability](./assets/docs/debugging-capability.png)
 
 > **Tip**: You can debug the app on either a physical device or a virtual device.
+
+For more instructions on how to work on this project, please visit the [Developer Manual](https://polar-bear-app.github.io/docs/developer/how-it-works).
