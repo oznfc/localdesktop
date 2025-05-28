@@ -82,14 +82,6 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     }
 }
 
-fn fix_tmp_permissions(_options: &SetupOptions) -> StageOutput {
-    // Fix "/tmp" can be written by others
-    ArchProcess::exec("chmod 700 /tmp")
-        .wait()
-        .pb_expect("chmod 700 /tmp failed");
-    None
-}
-
 fn create_normal_user(options: &SetupOptions) -> StageOutput {
     let username = options.username.clone();
     if !ArchProcess::exec(&format!("id {username}"))
@@ -146,6 +138,35 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
     }));
 }
 
+fn setup_firefox_config(_: &SetupOptions) -> StageOutput {
+    // Create the Firefox root directory if it doesn't exist
+    let firefox_root = format!("{}/usr/lib/firefox", crate::utils::config::ARCH_FS_ROOT);
+    fs::create_dir_all(&firefox_root).pb_expect("Failed to create Firefox root directory");
+
+    // Create the defaults/pref directory
+    let pref_dir = format!("{}/defaults/pref", firefox_root);
+    fs::create_dir_all(&pref_dir).pb_expect("Failed to create Firefox pref directory");
+
+    // Create autoconfig.js in defaults/pref
+    let autoconfig_js = r#"pref("general.config.filename", "polar-bear.cfg");
+pref("general.config.obscure_value", 0);
+"#;
+
+    fs::write(format!("{}/autoconfig.js", pref_dir), autoconfig_js)
+        .pb_expect("Failed to write Firefox autoconfig.js");
+
+    // Create polar-bear.cfg in the Firefox root directory
+    let firefox_cfg = r#"// Auto updated by Polar Bear on each startup, do not edit manually
+defaultPref("media.cubeb.sandbox", false);
+defaultPref("security.sandbox.content.level", 0);
+"#; // It is required that the first line of this file is a comment, even if you have nothing to comment. Docs: https://support.mozilla.org/en-US/kb/customizing-firefox-using-autoconfig
+
+    fs::write(format!("{}/polar-bear.cfg", firefox_root), firefox_cfg)
+        .pb_expect("Failed to write Firefox configuration");
+
+    None
+}
+
 pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     let (sender, receiver) = mpsc::channel();
     let progress = Arc::new(Mutex::new(0));
@@ -162,6 +183,7 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
         Box::new(setup_arch_fs),        // Step 1. Setup Arch FS
         Box::new(create_normal_user),   // Step 2. Create normal user
         Box::new(install_dependencies), // Step 3. Install dependencies
+        Box::new(setup_firefox_config), // Step 4. Setup Firefox config
     ];
 
     let fully_installed = 'outer: loop {
