@@ -34,21 +34,35 @@ impl ArchProcess {
             .arg("--sysvipc")
             .arg("--kill-on-exit")
             .arg("--root-id")
-            .arg("--cwd=/root")
             .arg("--bind=/dev")
             .arg("--bind=/proc")
             .arg("--bind=/sys")
             .arg(format!("--bind={}/tmp:/dev/shm", config::ARCH_FS_ROOT))
             .arg("/usr/bin/env")
-            .arg("-i")
-            .arg("\"HOME=/root\"")
-            .arg("\"LANG=C.UTF-8\"")
-            .arg("\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games:/system/bin:/system/xbin\"")
-            .arg("\"TMPDIR=/tmp\"");
+            .arg("-i");
+
+        let home = if self.user == "root" {
+            "HOME=/root".to_string()
+        } else {
+            format!("HOME=/home/{}", self.user)
+        };
+        process.arg(home);
+
+        process
+            .arg("LANG=C.UTF-8")
+            .arg("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games:/system/bin:/system/xbin")
+            .arg("TMPDIR=/tmp")
+            .arg(format!("USER={}", self.user))
+            .arg(format!("LOGNAME={}", self.user));
         if self.user == "root" {
             process.arg("sh");
         } else {
-            process.arg("su").arg("-").arg(&self.user);
+            process
+                .arg("runuser")
+                .arg("-u")
+                .arg(&self.user)
+                .arg("--")
+                .arg("sh");
         }
         let child = process
             .arg("-c")

@@ -1,7 +1,11 @@
 use super::process::ArchProcess;
 use crate::{
     app::build::{PolarBearBackend, WaylandBackend, WebviewBackend},
-    utils::{application_context::get_application_context, config, logging::PolarBearExpectation},
+    utils::{
+        application_context::get_application_context,
+        config::{self},
+        logging::PolarBearExpectation,
+    },
     wayland::compositor::Compositor,
 };
 use smithay::utils::Clock;
@@ -20,7 +24,6 @@ use xz2::read::XzDecoder;
 pub struct SetupOptions {
     pub install_packages: String,
     pub checking_command: String,
-    pub username: String,
     pub android_app: AndroidApp,
     pub mpsc_sender: Sender<String>,
 }
@@ -82,28 +85,11 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     }
 }
 
-fn create_normal_user(options: &SetupOptions) -> StageOutput {
-    let username = options.username.clone();
-    if !ArchProcess::exec(&format!("id {username}"))
-        .wait_with_output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-    {
-        let command = format!("useradd -m -G wheel {username} && passwd -d {username}");
-        ArchProcess::exec(&command)
-            .wait()
-            .pb_expect(&format!("{} failed", command));
-    }
-
-    None
-}
-
 fn install_dependencies(options: &SetupOptions) -> StageOutput {
     let SetupOptions {
         install_packages,
         checking_command,
         mpsc_sender,
-        username: _,
         android_app: _,
     } = options;
 
@@ -172,7 +158,6 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     let progress = Arc::new(Mutex::new(0));
 
     let options = SetupOptions {
-        username: "polarbear".to_string(),
         install_packages: config::PACMAN_INSTALL_PACKAGES.to_string(),
         checking_command: config::PACMAN_CHECKING_COMMAND.to_string(),
         android_app,
@@ -181,9 +166,8 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
 
     let stages: Vec<SetupStage> = vec![
         Box::new(setup_arch_fs),        // Step 1. Setup Arch FS
-        Box::new(create_normal_user),   // Step 2. Create normal user
-        Box::new(install_dependencies), // Step 3. Install dependencies
-        Box::new(setup_firefox_config), // Step 4. Setup Firefox config
+        Box::new(install_dependencies), // Step 2. Install dependencies
+        Box::new(setup_firefox_config), // Step 3. Setup Firefox config
     ];
 
     let fully_installed = 'outer: loop {
