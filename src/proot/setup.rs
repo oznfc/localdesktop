@@ -1,7 +1,11 @@
 use super::process::ArchProcess;
 use crate::{
     app::build::{PolarBearBackend, WaylandBackend, WebviewBackend},
-    utils::{application_context::get_application_context, config, logging::PolarBearExpectation},
+    utils::{
+        application_context::get_application_context,
+        config::{self},
+        logging::PolarBearExpectation,
+    },
     wayland::compositor::Compositor,
 };
 use smithay::utils::Clock;
@@ -17,12 +21,17 @@ use tar::Archive;
 use winit::platform::android::activity::AndroidApp;
 use xz2::read::XzDecoder;
 
+#[derive(Debug)]
+pub enum SetupMessage {
+    Progress(String),
+    Error(String),
+}
+
 pub struct SetupOptions {
     pub install_packages: String,
     pub checking_command: String,
-    pub username: String,
     pub android_app: AndroidApp,
-    pub mpsc_sender: Sender<String>,
+    pub mpsc_sender: Sender<SetupMessage>,
 }
 
 /// Setup is a process that should be done **only once** when the user installed the app.
@@ -34,6 +43,57 @@ type SetupStage = Box<dyn Fn(&SetupOptions) -> StageOutput + Send>;
 /// Thus, it should return a finished status if the task is done, so that the setup process can move on to the next stage.
 /// Otherwise, it should return a `JoinHandle`, so that the setup process can wait for the task to finish, but not block the main thread so that the setup progress can be reported to the user.
 type StageOutput = Option<JoinHandle<()>>;
+
+fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
+    let fs_root = std::path::Path::new(config::ARCH_FS_ROOT);
+    let mpsc_sender = options.mpsc_sender.clone();
+
+    if !fs_root.join("proc/.version").exists() {
+        return Some(thread::spawn(move || {
+            mpsc_sender
+                .send(SetupMessage::Progress(
+                    "Setting up fake system data...".to_string(),
+                ))
+                .unwrap_or(());
+
+            // Create necessary directories - don't fail if they already exist
+            let _ = fs::create_dir_all(fs_root.join("proc"));
+            let _ = fs::create_dir_all(fs_root.join("sys"));
+            let _ = fs::create_dir_all(fs_root.join("sys/.empty"));
+
+            // Set permissions - only try to set permissions if we're on Unix and have the capability
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                // Try to set permissions, but don't fail if we can't
+                let _ =
+                    fs::set_permissions(fs_root.join("proc"), fs::Permissions::from_mode(0o700));
+                let _ = fs::set_permissions(fs_root.join("sys"), fs::Permissions::from_mode(0o700));
+                let _ = fs::set_permissions(
+                    fs_root.join("sys/.empty"),
+                    fs::Permissions::from_mode(0o700),
+                );
+            }
+
+            // Create fake proc files
+            let proc_files = [
+                    ("proc/.loadavg", "0.12 0.07 0.02 2/165 765\n"),
+                    ("proc/.stat", "cpu  1957 0 2877 93280 262 342 254 87 0 0\ncpu0 31 0 226 12027 82 10 4 9 0 0\n"),
+                    ("proc/.uptime", "124.08 932.80\n"),
+                    ("proc/.version", "Linux version 6.2.1 (proot@termux) (gcc (GCC) 12.2.1 20230201, GNU ld (GNU Binutils) 2.40) #1 SMP PREEMPT_DYNAMIC Wed, 01 Mar 2023 00:00:00 +0000\n"),
+                    ("proc/.vmstat", "nr_free_pages 1743136\nnr_zone_inactive_anon 179281\nnr_zone_active_anon 7183\n"),
+                    ("proc/.sysctl_entry_cap_last_cap", "40\n"),
+                    ("proc/.sysctl_inotify_max_user_watches", "4096\n"),
+                ];
+
+            for (path, content) in proc_files {
+                fs::write(fs_root.join(path), content)
+                    .pb_expect(&format!("Permission denied while writing to {}", path));
+            }
+        }));
+    }
+    None
+}
 
 fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     let context = get_application_context().pb_expect("Failed to get application context");
@@ -50,7 +110,9 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
         let mpsc_sender = options.mpsc_sender.clone();
         return Some(thread::spawn(move || {
             mpsc_sender
-                .send("Extracting Arch Linux FS...".to_string())
+                .send(SetupMessage::Progress(
+                    "Extracting Arch Linux FS...".to_string(),
+                ))
                 .pb_expect("Failed to send log message");
 
             let tar_file = android_app
@@ -82,28 +144,11 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     }
 }
 
-fn create_normal_user(options: &SetupOptions) -> StageOutput {
-    let username = options.username.clone();
-    if !ArchProcess::exec(&format!("id {username}"))
-        .wait_with_output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-    {
-        let command = format!("useradd -m -G wheel {username} && passwd -d {username}");
-        ArchProcess::exec(&command)
-            .wait()
-            .pb_expect(&format!("{} failed", command));
-    }
-
-    None
-}
-
 fn install_dependencies(options: &SetupOptions) -> StageOutput {
     let SetupOptions {
         install_packages,
         checking_command,
         mpsc_sender,
-        username: _,
         android_app: _,
     } = options;
 
@@ -129,7 +174,9 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
                 install_packages
             ))
             .with_log(|it| {
-                mpsc_sender.send(it).pb_expect("Failed to send log message");
+                mpsc_sender
+                    .send(SetupMessage::Progress(it))
+                    .pb_expect("Failed to send log message");
             });
             if installed() {
                 break;
@@ -172,7 +219,6 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     let progress = Arc::new(Mutex::new(0));
 
     let options = SetupOptions {
-        username: "polarbear".to_string(),
         install_packages: config::PACMAN_INSTALL_PACKAGES.to_string(),
         checking_command: config::PACMAN_CHECKING_COMMAND.to_string(),
         android_app,
@@ -180,29 +226,48 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     };
 
     let stages: Vec<SetupStage> = vec![
-        Box::new(setup_arch_fs),        // Step 1. Setup Arch FS
-        Box::new(create_normal_user),   // Step 2. Create normal user
-        Box::new(install_dependencies), // Step 3. Install dependencies
-        Box::new(setup_firefox_config), // Step 4. Setup Firefox config
+        Box::new(setup_arch_fs),            // Step 1. Setup Arch FS
+        Box::new(setup_fake_sysdata_stage), // Step 2. Setup fake system data
+        Box::new(install_dependencies),     // Step 3. Install dependencies
+        Box::new(setup_firefox_config),     // Step 4. Setup Firefox config
     ];
+
+    let handle_stage_error = |e: Box<dyn std::any::Any + Send>, sender: &Sender<SetupMessage>| {
+        let error_msg = if let Some(e) = e.downcast_ref::<String>() {
+            format!("Stage execution failed: {}", e)
+        } else if let Some(e) = e.downcast_ref::<&str>() {
+            format!("Stage execution failed: {}", e)
+        } else {
+            "Stage execution failed: Unknown error".to_string()
+        };
+        sender.send(SetupMessage::Error(error_msg)).unwrap_or(());
+    };
 
     let fully_installed = 'outer: loop {
         for (i, stage) in stages.iter().enumerate() {
             if let Some(handle) = stage(&options) {
                 let progress_clone = progress.clone();
+                let sender_clone = sender.clone();
                 thread::spawn(move || {
                     let progress = progress_clone;
                     let progress_value = ((i) as u16 * 100 / stages.len() as u16) as u16;
                     *progress.lock().unwrap() = progress_value;
+
                     // Wait for the current stage to finish
-                    handle.join().pb_expect("Failed to join thread");
+                    if let Err(e) = handle.join() {
+                        handle_stage_error(e, &sender_clone);
+                        return;
+                    }
 
                     // Process the remaining stages in the same loop
                     for (j, next_stage) in stages.iter().enumerate().skip(i + 1) {
                         let progress_value = ((j) as u16 * 100 / stages.len() as u16) as u16;
                         *progress.lock().unwrap() = progress_value;
                         if let Some(next_handle) = next_stage(&options) {
-                            next_handle.join().pb_expect("Failed to join thread");
+                            if let Err(e) = next_handle.join() {
+                                handle_stage_error(e, &sender_clone);
+                                return;
+                            }
 
                             // Increment progress and send it
                             let next_progress_value =
@@ -214,8 +279,10 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
                     // All stages are done, we need to replace the WebviewBackend with the WaylandBackend
                     // Or, easier, just restart the whole app
                     *progress.lock().unwrap() = 100;
-                    sender
-                        .send("Installation finished, please restart the app".to_string())
+                    sender_clone
+                        .send(SetupMessage::Progress(
+                            "Installation finished, please restart the app".to_string(),
+                        ))
                         .pb_expect("Failed to send installation finished message");
                 });
 

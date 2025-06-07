@@ -1,5 +1,5 @@
 use super::process::ArchProcess;
-use crate::utils::config;
+use crate::utils::config::{self, parse_config};
 
 pub fn launch(launch_command: String) {
     // Clean up potential leftover files for display :1
@@ -13,7 +13,10 @@ pub fn launch(launch_command: String) {
         config::XDG_RUNTIME_DIR,
         launch_command
     );
-    ArchProcess::exec(&full_launch_command).with_log(|it| {
+
+    let username = parse_config().user.username;
+
+    ArchProcess::exec_as(&full_launch_command, &username).with_log(|it| {
         println!("{}", it);
     });
 }
