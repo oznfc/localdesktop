@@ -3584,7 +3584,7 @@ dependencies = [
 
 [[package]]
 name = "polar-bear"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "android_logger",
  "clap",
