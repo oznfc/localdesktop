@@ -11,6 +11,7 @@ use std::thread;
 use websocket::sync::Server;
 use websocket::OwnedMessage;
 use winit::platform::android::activity::AndroidApp;
+use crate::proot::setup::SetupMessage;
 
 pub struct PolarBearApp {
     pub frontend: PolarBearFrontend,
@@ -37,7 +38,7 @@ pub struct WebviewBackend {
 
 impl WebviewBackend {
     /// Start accepting connections and listening for messages
-    pub fn build(receiver: Receiver<String>, progress: Arc<Mutex<u16>>) -> Self {
+    pub fn build(receiver: Receiver<SetupMessage>, progress: Arc<Mutex<u16>>) -> Self {
         let socket = Server::bind("127.0.0.1:0").pb_expect("Failed to bind socket");
         let socket_port = socket.local_addr().unwrap().port();
 
@@ -77,10 +78,17 @@ impl WebviewBackend {
                 thread::spawn(move || {
                     for message in receiver_clone.lock().unwrap().iter() {
                         let progress = *progress_clone.lock().unwrap();
-                        let json_message = json!({
-                            "progress": progress,
-                            "message": message
-                        });
+                        let json_message = match message {
+                            SetupMessage::Progress(msg) => json!({
+                                "progress": progress,
+                                "message": msg,
+                            }),
+                            SetupMessage::Error(msg) => json!({
+                                "progress": progress,
+                                "message": msg,
+                                "isError": true
+                            })
+                        };
 
                         let message = OwnedMessage::Text(json_message.to_string());
                         let mut active_client = active_client_clone.lock().unwrap();

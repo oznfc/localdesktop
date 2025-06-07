@@ -41,7 +41,11 @@
           <div
             v-for="log in logs"
             :key="log.id"
-            style="display: flex; margin-bottom: 5px; color: white"
+            :style="{
+              display: 'flex',
+              marginBottom: '5px',
+              color: log.isError ? '#ff0000' : 'white'
+            }"
           >
             <div
               style="
@@ -80,7 +84,7 @@
             left: 0,
             height: '100%',
             width: progress + '%',
-            backgroundColor: '#006400',
+            backgroundColor: progressBarColor,
             zIndex: 0
           }"
         ></div>
@@ -107,16 +111,19 @@
       const app = Vue.createApp({
         data() {
           return {
-            showFullLog: false, // Toggle state for log view
+            showFullLog: false,
             progress: 0,
-            logs: [], // Array to store log messages
-            logCounter: 0, // Incremental counter for unique log IDs
+            logs: [],
+            logCounter: 0,
+            hasError: false,
           };
         },
         computed: {
           message() {
-            // Get the message from the last log entry, or use a default message
             return this.logs[0]?.message || "Installing...";
+          },
+          progressBarColor() {
+            return this.hasError ? "#ff0000" : "#006400";
           },
         },
         methods: {
@@ -126,16 +133,18 @@
           handleWebSocketMessage(data) {
             this.progress = data.progress;
 
-            // Alert when progress reaches 100
-            if (this.progress === 100) {
+            const isError = data.isError || false;
+            this.hasError = isError;
+
+            if (this.progress === 100 && !this.hasError) {
               alert("Installation finished, please restart the app!");
             }
 
-            // Add log entry and keep only the latest 100 logs
             this.logs.unshift({
-              id: this.logCounter++, // Use incrementing counter for unique ID
-              timestamp: Date.now(), // Store timestamp separately for rendering
+              id: this.logCounter++,
+              timestamp: Date.now(),
               message: data.message,
+              isError: isError,
             });
             if (this.logs.length > 100) {
               this.logs.pop();
