@@ -1,6 +1,6 @@
 [package]
 name = "polar-bear"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -22,6 +22,10 @@ xbuild = "0.2.0"
 clap = "4.5.27"
 
 [target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "0.12.20", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+] }
 jni = "0.21.1"
 log = "0.4"
 mockall = "0.13.1"

@@ -10,7 +10,8 @@ use crate::{
 };
 use smithay::utils::Clock;
 use std::{
-    fs,
+    fs::{self, File},
+    io::{Read, Write},
     sync::{
         mpsc::{self, Sender},
         Arc, Mutex,
@@ -97,7 +98,6 @@ fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
 
 fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     let context = get_application_context().pb_expect("Failed to get application context");
-    println!("Application context: {:?}", context);
     let fs_root = std::path::Path::new(config::ARCH_FS_ROOT);
 
     if !fs_root.exists()
@@ -106,29 +106,61 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
             .next()
             .is_none()
     {
-        let android_app = options.android_app.clone();
         let mpsc_sender = options.mpsc_sender.clone();
         return Some(thread::spawn(move || {
+            mpsc_sender
+                .send(SetupMessage::Progress(
+                    "Downloading Arch Linux FS...".to_string(),
+                ))
+                .pb_expect("Failed to send log message");
+
+            let temp_file = context.data_dir.join("archlinux-fs.tar.xz");
+
+            let response = reqwest::blocking::get(config::ARCH_FS_ARCHIVE)
+                .pb_expect("Failed to download Arch Linux FS");
+
+            let total_size = response.content_length().unwrap_or(0);
+
+            let mut file =
+                File::create(&temp_file).pb_expect("Failed to create temp file for Arch Linux FS");
+
+            let mut downloaded = 0u64;
+            let mut buffer = [0u8; 8192];
+            let mut reader = response;
+            loop {
+                let n = reader
+                    .read(&mut buffer)
+                    .pb_expect("Failed to read from response");
+                if n == 0 {
+                    break;
+                }
+                file.write_all(&buffer[..n])
+                    .pb_expect("Failed to write to file");
+                downloaded += n as u64;
+                if total_size > 0 {
+                    let percent = (downloaded * 100 / total_size).min(100);
+                    mpsc_sender
+                        .send(SetupMessage::Progress(format!(
+                            "Downloading Arch Linux FS... {}%",
+                            percent
+                        )))
+                        .unwrap_or(());
+                }
+            }
+
             mpsc_sender
                 .send(SetupMessage::Progress(
                     "Extracting Arch Linux FS...".to_string(),
                 ))
                 .pb_expect("Failed to send log message");
 
-            let tar_file = android_app
-                .asset_manager()
-                .open(
-                    std::ffi::CString::new(config::ARCH_FS_ARCHIVE)
-                        .pb_expect("Failed to create CString from ARCH_FS_ARCHIVE")
-                        .as_c_str(),
-                )
-                .pb_expect("Failed to open Arch Linux FS .tar.xz in asset manager");
-
             // Ensure the extracted directory is clean
             let extracted_dir = &context.data_dir.join("archlinux-aarch64");
             fs::remove_dir_all(extracted_dir).unwrap_or(());
 
             // Extract tar file directly to the final destination
+            let tar_file = std::fs::File::open(&temp_file)
+                .pb_expect("Failed to open downloaded Arch Linux FS file");
             let tar = XzDecoder::new(tar_file);
             let mut archive = Archive::new(tar);
             archive
@@ -138,6 +170,9 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
             // Move the extracted files to the final destination
             fs::rename(extracted_dir, fs_root)
                 .pb_expect("Failed to rename extracted files to final destination");
+
+            // Clean up the temporary file
+            fs::remove_file(&temp_file).pb_expect("Failed to remove temporary file");
         }));
     } else {
         return None;

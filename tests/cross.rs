@@ -117,16 +117,52 @@ fn run_integration_tests_on_android() {
         if !assets_pushed {
             let cwd = env::current_dir().expect("Failed to get current dir");
 
-            // Use XzDecoder to decompress the tar.xz file to a tar file
-            let tar_xz_path = cwd
-                .join("assets")
-                .join("archlinux-aarch64-pd-v4.6.0.tar.xz");
+            // Use TMPDIR or /tmp directly for the tar.xz file
+            let tmpdir = std::env::var("TMPDIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+
+            // Use the new URL from config
+            let tar_xz_url = polarbear::utils::config::ARCH_FS_ARCHIVE;
+            let tar_xz_filename = tar_xz_url.split('/').last().unwrap();
+            let tar_xz_path = tmpdir.join(tar_xz_filename);
+
+            if !tar_xz_path.exists() {
+                println!("Downloading {}", tar_xz_url);
+                let mut resp = reqwest::blocking::get(tar_xz_url).expect("Failed to download file");
+                let mut out =
+                    std::fs::File::create(&tar_xz_path).expect("Failed to create tar.xz file");
+                let mut downloaded = 0u64;
+                let total_size = resp.content_length().unwrap_or(0);
+                let mut buffer = [0u8; 8192];
+                use std::io::{Read, Write};
+                loop {
+                    let n = resp
+                        .read(&mut buffer)
+                        .expect("Failed to read from response");
+                    if n == 0 {
+                        break;
+                    }
+                    out.write_all(&buffer[..n])
+                        .expect("Failed to write to file");
+                    downloaded += n as u64;
+                    if total_size > 0 {
+                        let percent = (downloaded * 100 / total_size).min(100);
+                        print!("\rDownloading... {}%", percent);
+                        std::io::stdout().flush().unwrap();
+                    }
+                }
+                println!("\nDownload complete.");
+            }
+
+            // Use XzDecoder to decompress the tar.xz file to a tar file in the assets dir
             let tar_path = cwd.join("assets").join("arch.tar");
             let tar_xz_file =
                 std::fs::File::open(&tar_xz_path).expect("Failed to open tar.xz file");
             let mut tar_xz_decoder = xz2::read::XzDecoder::new(tar_xz_file);
             let mut tar_file = std::fs::File::create(&tar_path).expect("Failed to create tar file");
-            io::copy(&mut tar_xz_decoder, &mut tar_file).expect("Failed to copy tar.xz to tar");
+            std::io::copy(&mut tar_xz_decoder, &mut tar_file)
+                .expect("Failed to copy tar.xz to tar");
 
             // push mock assets to device
             let assets = [
