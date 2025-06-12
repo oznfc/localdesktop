@@ -1,7 +1,6 @@
 icon: assets/ic_launcher/1024.png
 android:
   assets:
-    - assets/archlinux-aarch64-pd-v4.6.0.tar.xz
     - assets/setup-progress.html
   runtime_libs:
     - assets/libs

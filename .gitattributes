@@ -1,1 +1,0 @@
-assets/archlinux-aarch64-pd-v4.6.0.tar.xz filter=lfs diff=lfs merge=lfs -text
