@@ -93,11 +93,11 @@ impl ApplicationHandler for PolarBearApp {
 
                 // Create the Output with given name and physical properties.
                 let output = Output::new(
-                    "Polar Bear Wayland Compositor".into(), // the name of this output,
+                    "Local Desktop Wayland Compositor".into(), // the name of this output,
                     PhysicalProperties {
                         size: size.into(),                 // dimensions (width, height) in mm
                         subpixel: Subpixel::HorizontalRgb, // subpixel information
-                        make: "Polar Bear".into(),         // make of the monitor
+                        make: "Local Desktop".into(),      // make of the monitor
                         model: config::VERSION.into(),     // model of the monitor
                     },
                 );
