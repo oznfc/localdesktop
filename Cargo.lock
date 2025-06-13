@@ -2850,6 +2850,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ee93343901ab17bd981295f2cf0026d4ad018c7c31ba84549a4ddbb47a45104"
 
 [[package]]
+name = "local-desktop"
+version = "0.1.2"
+dependencies = [
+ "android_logger",
+ "clap",
+ "jni",
+ "khronos-egl",
+ "libloading",
+ "log 0.4.27",
+ "mockall",
+ "reqwest 0.12.20",
+ "serde",
+ "serde_json",
+ "smithay",
+ "tar",
+ "toml 0.8.22",
+ "wayland-protocols",
+ "websocket",
+ "winit",
+ "xbuild",
+ "xz2",
+]
+
+[[package]]
 name = "log"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3700,30 +3724,6 @@ dependencies = [
  "fdeflate",
  "flate2",
  "miniz_oxide 0.8.2",
-]
-
-[[package]]
-name = "polar-bear"
-version = "0.1.2"
-dependencies = [
- "android_logger",
- "clap",
- "jni",
- "khronos-egl",
- "libloading",
- "log 0.4.27",
- "mockall",
- "reqwest 0.12.20",
- "serde",
- "serde_json",
- "smithay",
- "tar",
- "toml 0.8.22",
- "wayland-protocols",
- "websocket",
- "winit",
- "xbuild",
- "xz2",
 ]
 
 [[package]]

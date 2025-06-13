@@ -139,10 +139,12 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
                 downloaded += n as u64;
                 if total_size > 0 {
                     let percent = (downloaded * 100 / total_size).min(100);
+                    let downloaded_mb = downloaded as f64 / 1024.0 / 1024.0;
+                    let total_mb = total_size as f64 / 1024.0 / 1024.0;
                     mpsc_sender
                         .send(SetupMessage::Progress(format!(
-                            "Downloading Arch Linux FS... {}%",
-                            percent
+                            "Downloading Arch Linux FS... {}% ({:.2} MB / {:.2} MB)",
+                            percent, downloaded_mb, total_mb
                         )))
                         .unwrap_or(());
                 }
@@ -230,20 +232,20 @@ fn setup_firefox_config(_: &SetupOptions) -> StageOutput {
     fs::create_dir_all(&pref_dir).pb_expect("Failed to create Firefox pref directory");
 
     // Create autoconfig.js in defaults/pref
-    let autoconfig_js = r#"pref("general.config.filename", "polar-bear.cfg");
+    let autoconfig_js = r#"pref("general.config.filename", "local-desktop.cfg");
 pref("general.config.obscure_value", 0);
 "#;
 
     fs::write(format!("{}/autoconfig.js", pref_dir), autoconfig_js)
         .pb_expect("Failed to write Firefox autoconfig.js");
 
-    // Create polar-bear.cfg in the Firefox root directory
-    let firefox_cfg = r#"// Auto updated by Polar Bear on each startup, do not edit manually
+    // Create local-desktop.cfg in the Firefox root directory
+    let firefox_cfg = r#"// Auto updated by Local Desktop on each startup, do not edit manually
 defaultPref("media.cubeb.sandbox", false);
 defaultPref("security.sandbox.content.level", 0);
 "#; // It is required that the first line of this file is a comment, even if you have nothing to comment. Docs: https://support.mozilla.org/en-US/kb/customizing-firefox-using-autoconfig
 
-    fs::write(format!("{}/polar-bear.cfg", firefox_root), firefox_cfg)
+    fs::write(format!("{}/local-desktop.cfg", firefox_root), firefox_cfg)
         .pb_expect("Failed to write Firefox configuration");
 
     None
