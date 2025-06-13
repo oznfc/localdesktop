@@ -98,55 +98,59 @@ fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
 
 fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     let context = get_application_context().pb_expect("Failed to get application context");
+    let temp_file = context.data_dir.join("archlinux-fs.tar.xz");
     let fs_root = std::path::Path::new(config::ARCH_FS_ROOT);
+    let extracted_dir = context.data_dir.join("archlinux-aarch64");
+    let mpsc_sender = options.mpsc_sender.clone();
 
-    if !fs_root.exists()
-        || fs::read_dir(fs_root)
-            .pb_expect("Failed to read fs_root directory")
-            .next()
-            .is_none()
-    {
-        let mpsc_sender = options.mpsc_sender.clone();
+    // Only run if the fs_root is missing or empty
+    let need_setup = fs_root.read_dir().map_or(true, |mut d| d.next().is_none());
+    if need_setup {
         return Some(thread::spawn(move || {
-            mpsc_sender
-                .send(SetupMessage::Progress(
-                    "Downloading Arch Linux FS...".to_string(),
-                ))
-                .pb_expect("Failed to send log message");
+            // Download if the archive doesn't exist
+            if !temp_file.exists() {
+                mpsc_sender
+                    .send(SetupMessage::Progress(
+                        "Downloading Arch Linux FS...".to_string(),
+                    ))
+                    .pb_expect("Failed to send log message");
 
-            let temp_file = context.data_dir.join("archlinux-fs.tar.xz");
+                let response = reqwest::blocking::get(config::ARCH_FS_ARCHIVE)
+                    .pb_expect("Failed to download Arch Linux FS");
 
-            let response = reqwest::blocking::get(config::ARCH_FS_ARCHIVE)
-                .pb_expect("Failed to download Arch Linux FS");
+                let total_size = response.content_length().unwrap_or(0);
+                let mut file = File::create(&temp_file)
+                    .pb_expect("Failed to create temp file for Arch Linux FS");
 
-            let total_size = response.content_length().unwrap_or(0);
+                let mut downloaded = 0u64;
+                let mut buffer = [0u8; 8192];
+                let mut reader = response;
+                let mut last_percent = 0;
 
-            let mut file =
-                File::create(&temp_file).pb_expect("Failed to create temp file for Arch Linux FS");
-
-            let mut downloaded = 0u64;
-            let mut buffer = [0u8; 8192];
-            let mut reader = response;
-            loop {
-                let n = reader
-                    .read(&mut buffer)
-                    .pb_expect("Failed to read from response");
-                if n == 0 {
-                    break;
-                }
-                file.write_all(&buffer[..n])
-                    .pb_expect("Failed to write to file");
-                downloaded += n as u64;
-                if total_size > 0 {
-                    let percent = (downloaded * 100 / total_size).min(100);
-                    let downloaded_mb = downloaded as f64 / 1024.0 / 1024.0;
-                    let total_mb = total_size as f64 / 1024.0 / 1024.0;
-                    mpsc_sender
-                        .send(SetupMessage::Progress(format!(
-                            "Downloading Arch Linux FS... {}% ({:.2} MB / {:.2} MB)",
-                            percent, downloaded_mb, total_mb
-                        )))
-                        .unwrap_or(());
+                loop {
+                    let n = reader
+                        .read(&mut buffer)
+                        .pb_expect("Failed to read from response");
+                    if n == 0 {
+                        break;
+                    }
+                    file.write_all(&buffer[..n])
+                        .pb_expect("Failed to write to file");
+                    downloaded += n as u64;
+                    if total_size > 0 {
+                        let percent = (downloaded * 100 / total_size).min(100) as u8;
+                        if percent != last_percent {
+                            let downloaded_mb = downloaded as f64 / 1024.0 / 1024.0;
+                            let total_mb = total_size as f64 / 1024.0 / 1024.0;
+                            mpsc_sender
+                                .send(SetupMessage::Progress(format!(
+                                    "Downloading Arch Linux FS... {}% ({:.2} MB / {:.2} MB)",
+                                    percent, downloaded_mb, total_mb
+                                )))
+                                .unwrap_or(());
+                            last_percent = percent;
+                        }
+                    }
                 }
             }
 
@@ -157,12 +161,11 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
                 .pb_expect("Failed to send log message");
 
             // Ensure the extracted directory is clean
-            let extracted_dir = &context.data_dir.join("archlinux-aarch64");
-            fs::remove_dir_all(extracted_dir).unwrap_or(());
+            fs::remove_dir_all(&extracted_dir).unwrap_or(());
 
             // Extract tar file directly to the final destination
-            let tar_file = std::fs::File::open(&temp_file)
-                .pb_expect("Failed to open downloaded Arch Linux FS file");
+            let tar_file =
+                File::open(&temp_file).pb_expect("Failed to open downloaded Arch Linux FS file");
             let tar = XzDecoder::new(tar_file);
             let mut archive = Archive::new(tar);
             archive
@@ -170,15 +173,14 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
                 .pb_expect("Failed to extract Arch Linux FS .tar.xz file");
 
             // Move the extracted files to the final destination
-            fs::rename(extracted_dir, fs_root)
+            fs::rename(&extracted_dir, fs_root)
                 .pb_expect("Failed to rename extracted files to final destination");
 
             // Clean up the temporary file
             fs::remove_file(&temp_file).pb_expect("Failed to remove temporary file");
         }));
-    } else {
-        return None;
     }
+    None
 }
 
 fn install_dependencies(options: &SetupOptions) -> StageOutput {
@@ -232,20 +234,20 @@ fn setup_firefox_config(_: &SetupOptions) -> StageOutput {
     fs::create_dir_all(&pref_dir).pb_expect("Failed to create Firefox pref directory");
 
     // Create autoconfig.js in defaults/pref
-    let autoconfig_js = r#"pref("general.config.filename", "local-desktop.cfg");
+    let autoconfig_js = r#"pref("general.config.filename", "localdesktop.cfg");
 pref("general.config.obscure_value", 0);
 "#;
 
     fs::write(format!("{}/autoconfig.js", pref_dir), autoconfig_js)
         .pb_expect("Failed to write Firefox autoconfig.js");
 
-    // Create local-desktop.cfg in the Firefox root directory
+    // Create localdesktop.cfg in the Firefox root directory
     let firefox_cfg = r#"// Auto updated by Local Desktop on each startup, do not edit manually
 defaultPref("media.cubeb.sandbox", false);
 defaultPref("security.sandbox.content.level", 0);
 "#; // It is required that the first line of this file is a comment, even if you have nothing to comment. Docs: https://support.mozilla.org/en-US/kb/customizing-firefox-using-autoconfig
 
-    fs::write(format!("{}/local-desktop.cfg", firefox_root), firefox_cfg)
+    fs::write(format!("{}/localdesktop.cfg", firefox_root), firefox_cfg)
         .pb_expect("Failed to write Firefox configuration");
 
     None
@@ -263,7 +265,7 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     };
 
     let stages: Vec<SetupStage> = vec![
-        Box::new(setup_arch_fs),            // Step 1. Setup Arch FS
+        Box::new(setup_arch_fs),            // Step 1. Setup Arch FS (extract)
         Box::new(setup_fake_sysdata_stage), // Step 2. Setup fake system data
         Box::new(install_dependencies),     // Step 3. Install dependencies
         Box::new(setup_firefox_config),     // Step 4. Setup Firefox config
