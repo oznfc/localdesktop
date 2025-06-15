@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK & AAB
 
 on:
   push:
@@ -10,6 +10,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+  ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
 jobs:
   build:
@@ -60,21 +63,32 @@ jobs:
         working-directory: patches/xbuild
         run: cargo install --path xbuild
 
-      - name: Build APK
-        run: x build --release --platform=android --arch=arm64 --format=apk
-
-      - name: Rename APK
+      - name: Setup signing keystore
         run: |
-          mv target/x/release/android/gradle/app/build/outputs/apk/debug/app-debug.apk target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.apk
-          mv target/x/release/android/gradle/app/build/outputs/apk/release/app-release-unsigned.apk target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+          mkdir -p target/x/release/android/gradle/app
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > target/x/release/android/gradle/app/release-key.jks
+          # Verify keystore
+          keytool -list -v -keystore target/x/release/android/gradle/app/release-key.jks -storepass $ANDROID_KEYSTORE_PASSWORD
 
       - name: Build AAB
         run: x build --release --platform=android --arch=arm64 --format=aab
 
-      - name: Rename AAB
+      - name: Verify AAB signing
         run: |
-          mv target/x/release/android/gradle/app/build/outputs/bundle/debug/app-debug.aab target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.aab
-          mv target/x/release/android/gradle/app/build/outputs/bundle/release/app-release.aab target/x/localdesktop-${{ steps.extract_version.outputs.version }}.aab
+          bundletool verify --bundle=target/x/release/android/gradle/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Generate APKs from AAB
+        run: |
+          bundletool build-apks --bundle=target/x/release/android/gradle/app/build/outputs/bundle/release/app-release.aab \
+            --output=target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apks \
+            --ks=target/x/release/android/gradle/app/release-key.jks \
+            --ks-pass=pass:$ANDROID_KEYSTORE_PASSWORD \
+            --ks-key-alias=$ANDROID_KEY_ALIAS \
+            --key-pass=pass:$ANDROID_KEY_PASSWORD
+
+      - name: Extract universal APK
+        run: |
+          unzip -p target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apks universal.apk > target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apk
 
       - name: Create GitHub Release
         if: github.ref_type == 'tag'
@@ -84,8 +98,6 @@ jobs:
           tag_name: v${{ steps.extract_version.outputs.version }}
           files: |
             target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apk
-            target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.apk
             target/x/localdesktop-${{ steps.extract_version.outputs.version }}.aab
-            target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

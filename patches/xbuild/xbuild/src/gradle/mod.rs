@@ -85,6 +85,21 @@ pub fn build(env: &BuildEnv, libraries: Vec<(Target, PathBuf)>, out: &Path) -> R
                     versionCode {version_code}
                     versionName '{version_name}'
                 }}
+                signingConfigs {{
+                    release {{
+                        storeFile file("release-key.jks")
+                        storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                        keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                        keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                    }}
+                }}
+                buildTypes {{
+                    release {{
+                        signingConfig signingConfigs.release
+                        minifyEnabled true
+                        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                    }}
+                }}
             }}
             dependencies {{
                 {dependencies}
