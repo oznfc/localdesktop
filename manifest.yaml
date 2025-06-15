@@ -4,6 +4,7 @@ android:
     - assets/setup-progress.html
   runtime_libs:
     - assets/libs
+  gradle: true
   manifest:
     package: app.polarbear
     sdk:

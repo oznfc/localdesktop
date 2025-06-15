@@ -18,6 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Extract version
+        id: extract_version
+        run: echo "version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> "$GITHUB_OUTPUT"
+
       - name: Update manifest.yaml to target API 34
         run: |
           sed -i 's/target_sdk_version: 33/target_sdk_version: 34/' manifest.yaml
@@ -57,15 +61,20 @@ jobs:
         run: cargo install --path xbuild
 
       - name: Build APK
-        run: x build --release --platform=android --arch=arm64
+        run: x build --release --platform=android --arch=arm64 --format=apk
 
-      - name: Extract version
-        id: extract_version
-        run: echo "version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> "$GITHUB_OUTPUT"
-
-      - name: Rename APK with version
+      - name: Rename APK
         run: |
-          mv target/x/release/android/localdesktop.apk target/x/release/android/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+          mv target/x/release/android/gradle/app/build/outputs/apk/debug/app-debug.apk target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.apk
+          mv target/x/release/android/gradle/app/build/outputs/apk/release/app-release-unsigned.apk target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+
+      - name: Build AAB
+        run: x build --release --platform=android --arch=arm64 --format=aab
+
+      - name: Rename AAB
+        run: |
+          mv target/x/release/android/gradle/app/build/outputs/bundle/debug/app-debug.aab target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.aab
+          mv target/x/release/android/gradle/app/build/outputs/bundle/release/app-release.aab target/x/localdesktop-${{ steps.extract_version.outputs.version }}.aab
 
       - name: Create GitHub Release
         if: github.ref_type == 'tag'
@@ -73,6 +82,10 @@ jobs:
         with:
           name: Local Desktop v${{ steps.extract_version.outputs.version }}
           tag_name: v${{ steps.extract_version.outputs.version }}
-          files: target/x/release/android/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+          files: |
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.apk
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}.aab
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

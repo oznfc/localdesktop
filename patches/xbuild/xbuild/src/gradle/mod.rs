@@ -41,8 +41,10 @@ pub fn build(env: &BuildEnv, libraries: Vec<(Target, PathBuf)>, out: &Path) -> R
     let kotlin = main.join("kotlin");
     let jnilibs = main.join("jniLibs");
     let res = main.join("res");
+    let assets = main.join("assets");
 
     std::fs::create_dir_all(&kotlin)?;
+    std::fs::create_dir_all(&assets)?;
     std::fs::write(gradle.join("build.gradle"), BUILD_GRADLE)?;
     std::fs::write(gradle.join("gradle.properties"), GRADLE_PROPERTIES)?;
     std::fs::write(gradle.join("settings.gradle"), SETTINGS_GRADLE)?;
@@ -153,6 +155,22 @@ pub fn build(env: &BuildEnv, libraries: Vec<(Target, PathBuf)>, out: &Path) -> R
         std::fs::copy(&lib, lib_dir.join(name))?;
     }
 
+    // Handle assets
+    for asset in &config.assets {
+        let source_path = env.cargo().package_root().join(asset.path());
+        if !asset.optional() || source_path.exists() {
+            let file_name = asset
+                .path()
+                .file_name()
+                .context("Asset must have file_name component")?;
+            let dest_path = assets.join(file_name);
+            if let Some(parent) = dest_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&source_path, &dest_path)?;
+        }
+    }
+
     let opt = env.target().opt();
     let format = env.target().format();
     let mut cmd = Command::new("gradle");
@@ -162,6 +180,7 @@ pub fn build(env: &BuildEnv, libraries: Vec<(Target, PathBuf)>, out: &Path) -> R
         Format::Apk => "assemble",
         _ => unreachable!(),
     });
+    println!("cmd: {:?}", cmd);
     task::run(cmd, true)?;
     let output = gradle
         .join("app")
