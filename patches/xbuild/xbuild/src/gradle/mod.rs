@@ -85,17 +85,22 @@ pub fn build(env: &BuildEnv, libraries: Vec<(Target, PathBuf)>, out: &Path) -> R
                     versionCode {version_code}
                     versionName '{version_name}'
                 }}
-                signingConfigs {{
-                    release {{
-                        storeFile file("release-key.jks")
-                        storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                        keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                        keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                def keystoreFile = file("release-key.jks")
+                if (keystoreFile.exists()) {{
+                    signingConfigs {{
+                        release {{
+                            storeFile keystoreFile
+                            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                            keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                            keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                        }}
                     }}
                 }}
                 buildTypes {{
                     release {{
-                        signingConfig signingConfigs.release
+                        if (keystoreFile.exists()) {{
+                            signingConfig signingConfigs.release
+                        }}
                         minifyEnabled true
                         proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
                     }}
@@ -209,7 +214,13 @@ pub fn build(env: &BuildEnv, libraries: Vec<(Target, PathBuf)>, out: &Path) -> R
         .join(opt.to_string())
         .join(match (format, opt) {
             (Format::Apk, Opt::Debug) => "app-debug.apk",
-            (Format::Apk, Opt::Release) => "app-release-unsigned.apk",
+            (Format::Apk, Opt::Release) => {
+                if gradle.join("app").join("release-key.jks").exists() {
+                    "app-release.apk"
+                } else {
+                    "app-release-unsigned.apk"
+                }
+            }
             (Format::Aab, Opt::Debug) => "app-debug.aab",
             (Format::Aab, Opt::Release) => "app-release.aab",
             _ => unreachable!(),
