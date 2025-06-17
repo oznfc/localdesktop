@@ -7,7 +7,8 @@ use crate::{
     app::build::PolarBearApp,
     utils::{
         application_context::ApplicationContext,
-        fullscreen_immersive::enable_fullscreen_immersive_mode, logging::PolarBearExpectation,
+        fullscreen_immersive::{enable_fullscreen_immersive_mode, keep_screen_on},
+        logging::PolarBearExpectation,
         ndk::run_in_jvm,
     },
 };
@@ -17,6 +18,7 @@ fn android_main(android_app: AndroidApp) {
     ApplicationContext::build(&android_app);
 
     run_in_jvm(enable_fullscreen_immersive_mode, android_app.clone());
+    run_in_jvm(keep_screen_on, android_app.clone());
 
     std::env::set_var("RUST_BACKTRACE", "full");
     android_logger::init_once(

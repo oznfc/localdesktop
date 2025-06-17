@@ -55,7 +55,7 @@ fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
                 .send(SetupMessage::Progress(
                     "Setting up fake system data...".to_string(),
                 ))
-                .unwrap_or(());
+                .pb_expect(&format!("Failed to send log message"));
 
             // Create necessary directories - don't fail if they already exist
             let _ = fs::create_dir_all(fs_root.join("proc"));
@@ -108,69 +108,88 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     if need_setup {
         return Some(thread::spawn(move || {
             // Download if the archive doesn't exist
-            if !temp_file.exists() {
-                mpsc_sender
-                    .send(SetupMessage::Progress(
-                        "Downloading Arch Linux FS...".to_string(),
-                    ))
-                    .pb_expect("Failed to send log message");
+            loop {
+                if !temp_file.exists() {
+                    mpsc_sender
+                        .send(SetupMessage::Progress(
+                            "Downloading Arch Linux FS...".to_string(),
+                        ))
+                        .pb_expect("Failed to send log message");
 
-                let response = reqwest::blocking::get(config::ARCH_FS_ARCHIVE)
-                    .pb_expect("Failed to download Arch Linux FS");
+                    let response = reqwest::blocking::get(config::ARCH_FS_ARCHIVE)
+                        .pb_expect("Failed to download Arch Linux FS");
 
-                let total_size = response.content_length().unwrap_or(0);
-                let mut file = File::create(&temp_file)
-                    .pb_expect("Failed to create temp file for Arch Linux FS");
+                    let total_size = response.content_length().unwrap_or(0);
+                    let mut file = File::create(&temp_file)
+                        .pb_expect("Failed to create temp file for Arch Linux FS");
 
-                let mut downloaded = 0u64;
-                let mut buffer = [0u8; 8192];
-                let mut reader = response;
-                let mut last_percent = 0;
+                    let mut downloaded = 0u64;
+                    let mut buffer = [0u8; 8192];
+                    let mut reader = response;
+                    let mut last_percent = 0;
 
-                loop {
-                    let n = reader
-                        .read(&mut buffer)
-                        .pb_expect("Failed to read from response");
-                    if n == 0 {
-                        break;
-                    }
-                    file.write_all(&buffer[..n])
-                        .pb_expect("Failed to write to file");
-                    downloaded += n as u64;
-                    if total_size > 0 {
-                        let percent = (downloaded * 100 / total_size).min(100) as u8;
-                        if percent != last_percent {
-                            let downloaded_mb = downloaded as f64 / 1024.0 / 1024.0;
-                            let total_mb = total_size as f64 / 1024.0 / 1024.0;
-                            mpsc_sender
-                                .send(SetupMessage::Progress(format!(
-                                    "Downloading Arch Linux FS... {}% ({:.2} MB / {:.2} MB)",
-                                    percent, downloaded_mb, total_mb
-                                )))
-                                .unwrap_or(());
-                            last_percent = percent;
+                    loop {
+                        let n = reader
+                            .read(&mut buffer)
+                            .pb_expect("Failed to read from response");
+                        if n == 0 {
+                            break;
+                        }
+                        file.write_all(&buffer[..n])
+                            .pb_expect("Failed to write to file");
+                        downloaded += n as u64;
+                        if total_size > 0 {
+                            let percent = (downloaded * 100 / total_size).min(100) as u8;
+                            if percent != last_percent {
+                                let downloaded_mb = downloaded as f64 / 1024.0 / 1024.0;
+                                let total_mb = total_size as f64 / 1024.0 / 1024.0;
+                                mpsc_sender
+                                    .send(SetupMessage::Progress(format!(
+                                        "Downloading Arch Linux FS... {}% ({:.2} MB / {:.2} MB)",
+                                        percent, downloaded_mb, total_mb
+                                    )))
+                                    .unwrap_or(());
+                                last_percent = percent;
+                            }
                         }
                     }
                 }
+
+                mpsc_sender
+                    .send(SetupMessage::Progress(
+                        "Extracting Arch Linux FS...".to_string(),
+                    ))
+                    .pb_expect("Failed to send log message");
+
+                // Ensure the extracted directory is clean
+                fs::remove_dir_all(&extracted_dir).unwrap_or(());
+
+                // Extract tar file directly to the final destination
+                let tar_file = File::open(&temp_file)
+                    .pb_expect("Failed to open downloaded Arch Linux FS file");
+                let tar = XzDecoder::new(tar_file);
+                let mut archive = Archive::new(tar);
+
+                // Try to extract, if it fails, remove temp file and restart download
+                if let Err(e) = archive.unpack(context.data_dir.clone()) {
+                    // Clean up the failed extraction
+                    fs::remove_dir_all(&extracted_dir).unwrap_or(());
+                    fs::remove_file(&temp_file).unwrap_or(());
+
+                    mpsc_sender
+                        .send(SetupMessage::Error(format!(
+                            "Failed to extract Arch Linux FS: {}. Restarting download...",
+                            e
+                        )))
+                        .unwrap_or(());
+
+                    // Continue the outer loop to retry the download
+                    continue;
+                }
+
+                // If we get here, extraction was successful
+                break;
             }
-
-            mpsc_sender
-                .send(SetupMessage::Progress(
-                    "Extracting Arch Linux FS...".to_string(),
-                ))
-                .pb_expect("Failed to send log message");
-
-            // Ensure the extracted directory is clean
-            fs::remove_dir_all(&extracted_dir).unwrap_or(());
-
-            // Extract tar file directly to the final destination
-            let tar_file =
-                File::open(&temp_file).pb_expect("Failed to open downloaded Arch Linux FS file");
-            let tar = XzDecoder::new(tar_file);
-            let mut archive = Archive::new(tar);
-            archive
-                .unpack(context.data_dir.clone())
-                .pb_expect("Failed to extract Arch Linux FS .tar.xz file");
 
             // Move the extracted files to the final destination
             fs::rename(&extracted_dir, fs_root)
