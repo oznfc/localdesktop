@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK & AAB
 
 on:
   push:
@@ -10,6 +10,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+  ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
 jobs:
   build:
@@ -17,6 +20,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: extract_version
+        run: echo "version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> "$GITHUB_OUTPUT"
+
+      - name: Setup signing keystore
+        run: |
+          mkdir -p target/x/release/android/gradle/app
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > target/x/release/android/gradle/app/release-key.jks
+          # Verify keystore
+          keytool -list -v -keystore target/x/release/android/gradle/app/release-key.jks -storepass $ANDROID_KEYSTORE_PASSWORD
 
       - name: Update manifest.yaml to target API 34
         run: |
@@ -57,22 +71,29 @@ jobs:
         run: cargo install --path xbuild
 
       - name: Build APK
-        run: x build --release --platform=android --arch=arm64
+        run: x build --release --platform=android --arch=arm64 --format=apk
 
-      - name: Extract version
-        id: extract_version
-        run: echo "version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> "$GITHUB_OUTPUT"
-
-      - name: Rename APK with version
+      - name: Rename APK
         run: |
-          mv target/x/release/android/localdesktop.apk target/x/release/android/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+          mv target/x/release/android/gradle/app/build/outputs/apk/debug/app-debug.apk target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.apk
+          mv target/x/release/android/gradle/app/build/outputs/apk/release/app-release.apk target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+      - name: Build AAB
+        run: x build --release --platform=android --arch=arm64 --format=aab
 
+      - name: Rename AAB
+        run: |
+          mv target/x/release/android/gradle/app/build/outputs/bundle/debug/app-debug.aab target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.aab
+          mv target/x/release/android/gradle/app/build/outputs/bundle/release/app-release.aab target/x/localdesktop-${{ steps.extract_version.outputs.version }}.aab
       - name: Create GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           name: Local Desktop v${{ steps.extract_version.outputs.version }}
           tag_name: v${{ steps.extract_version.outputs.version }}
-          files: target/x/release/android/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+          files: |
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}.apk
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.apk
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}.aab
+            target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
