@@ -85,6 +85,11 @@ pub fn build(env: &BuildEnv, libraries: Vec<(Target, PathBuf)>, out: &Path) -> R
                     versionCode {version_code}
                     versionName '{version_name}'
                 }}
+                packagingOptions {{
+                    jniLibs {{
+                        useLegacyPackaging true
+                    }}
+                }}
                 def keystoreFile = file("release-key.jks")
                 if (keystoreFile.exists()) {{
                     signingConfigs {{
