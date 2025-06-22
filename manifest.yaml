@@ -12,6 +12,7 @@ android:
       target_sdk_version: 33
     application:
       label: "Local Desktop"
+      extract_native_libs: true # Required for proot invocations
       use_cleartext_traffic: true # Required for connecting to ws://127.0.0.1, see assets/setup-progress.html
     uses_permission:
       - name: android.permission.INTERNET

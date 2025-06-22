@@ -84,6 +84,8 @@ pub struct Application {
     pub activities: Vec<Activity>,
     #[serde(rename(serialize = "android:usesCleartextTraffic"))]
     pub use_cleartext_traffic: Option<bool>,
+    #[serde(rename(serialize = "android:extractNativeLibs"))]
+    pub extract_native_libs: Option<bool>,
 }
 
 /// Android [activity element](https://developer.android.com/guide/topics/manifest/activity-element).
