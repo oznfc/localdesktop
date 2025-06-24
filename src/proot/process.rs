@@ -155,7 +155,7 @@ mod tests {
     fn should_output_uname() {
         let process = ArchProcess::exec("uname -a");
         let output = process.wait_with_output().expect("Failed to read output");
-        println!("Output: {}", String::from_utf8_lossy(&output.stdout));
+        log::info!("Output: {}", String::from_utf8_lossy(&output.stdout));
         assert!(String::from_utf8_lossy(&output.stdout)
             .to_lowercase()
             .contains("arch"));

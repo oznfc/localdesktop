@@ -27,8 +27,8 @@ impl ApplicationContext {
 
         let cache_dir = Self::get_path(&mut env, &activity, "getCacheDir");
         let data_dir = Self::get_path(&mut env, &activity, "getFilesDir");
-
         let native_library_dir = Self::get_native_library_dir(&mut env, &activity);
+
         {
             let mut context = APPLICATION_CONTEXT
                 .write()
@@ -38,6 +38,10 @@ impl ApplicationContext {
                 data_dir,
                 native_library_dir,
             });
+            log::info!(
+                "ApplicationContext initialized: {:?}",
+                context.as_ref().unwrap()
+            );
         }
     }
 
