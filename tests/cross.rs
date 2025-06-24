@@ -10,7 +10,7 @@ fn run_integration_tests_on_android() {
     let platform_dir = env.platform_dir();
     create_dir_all(&platform_dir).expect("Failed to create platform dir");
 
-    println!("Build executable tests");
+    log::info!("Build executable tests");
 
     let mut devices = vec![];
     let adb_devices_output = Command::new("adb")
@@ -54,7 +54,7 @@ fn run_integration_tests_on_android() {
 
         // Dereference the raw pointer to get the value
         let old_command = unsafe { &*cmd_ptr };
-        println!("-- {:?}", old_command);
+        log::info!("-- {:?}", old_command);
 
         // Build a new command
         let mut new_command = Command::new(old_command.get_program());
@@ -70,7 +70,7 @@ fn run_integration_tests_on_android() {
                 .get_current_dir()
                 .expect("Failed to get current dir"),
         );
-        println!("++ {:?}", new_command);
+        log::info!("++ {:?}", new_command);
 
         // Replace the old command with the new command
         unsafe { ptr::write(cmd_ptr, new_command) };
@@ -98,9 +98,10 @@ fn run_integration_tests_on_android() {
             .to_string_lossy()
             .into_owned();
 
-        println!(
+        log::info!(
             "Run executable tests {} on device {}",
-            executable_test_binary, device
+            executable_test_binary,
+            device
         );
 
         // Check if assets have been pushed to the device
@@ -123,12 +124,12 @@ fn run_integration_tests_on_android() {
                 .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
 
             // Use the new URL from config
-            let tar_xz_url = localdesktop::utils::config::ARCH_FS_ARCHIVE;
+            let tar_xz_url = "https://github.com/termux/proot-distro/releases/download/v4.22.1/archlinux-aarch64-pd-v4.22.1.tar.xz";
             let tar_xz_filename = tar_xz_url.split('/').last().unwrap();
             let tar_xz_path = tmpdir.join(tar_xz_filename);
 
             if !tar_xz_path.exists() {
-                println!("Downloading {}", tar_xz_url);
+                log::info!("Downloading {}", tar_xz_url);
                 let mut resp = reqwest::blocking::get(tar_xz_url).expect("Failed to download file");
                 let mut out =
                     std::fs::File::create(&tar_xz_path).expect("Failed to create tar.xz file");
@@ -148,11 +149,11 @@ fn run_integration_tests_on_android() {
                     downloaded += n as u64;
                     if total_size > 0 {
                         let percent = (downloaded * 100 / total_size).min(100);
-                        print!("\rDownloading... {}%", percent);
+                        log::info!("\rDownloading... {}%", percent);
                         std::io::stdout().flush().unwrap();
                     }
                 }
-                println!("\nDownload complete.");
+                log::info!("\nDownload complete.");
             }
 
             // Use XzDecoder to decompress the tar.xz file to a tar file in the assets dir
@@ -250,6 +251,6 @@ fn run_integration_tests_on_android() {
             .expect("Failed to execute adb shell")
             .code();
         assert_eq!(status, Some(0));
-        println!("Done");
+        log::info!("Done");
     }
 }

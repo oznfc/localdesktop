@@ -17,6 +17,6 @@ pub fn launch(launch_command: String) {
     let username = parse_config().user.username;
 
     ArchProcess::exec_as(&full_launch_command, &username).with_log(|it| {
-        println!("{}", it);
+        log::info!("{}", it);
     });
 }

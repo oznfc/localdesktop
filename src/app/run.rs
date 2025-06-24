@@ -316,7 +316,7 @@ impl ApplicationHandler for PolarBearApp {
                     CentralizedEvent::Input(event)
                 }
                 _ => {
-                    println!("Unhandled event: {:?}", event);
+                    log::info!("Unhandled event: {:?}", event);
                     CentralizedEvent::Unsupported
                 }
             };
@@ -324,7 +324,7 @@ impl ApplicationHandler for PolarBearApp {
             // Handle the centralized events
             match event {
                 CentralizedEvent::CloseRequested => {
-                    println!("The close button was pressed; stopping");
+                    log::info!("The close button was pressed; stopping");
                     event_loop.exit();
                 }
                 CentralizedEvent::Redraw => {
@@ -375,7 +375,7 @@ impl ApplicationHandler for PolarBearApp {
                                 .accept()
                                 .pb_expect("Failed to accept listener")
                             {
-                                println!("Got a client: {:?}", stream);
+                                log::info!("Got a client: {:?}", stream);
 
                                 let client = compositor
                                     .display

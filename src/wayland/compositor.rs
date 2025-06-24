@@ -1,4 +1,4 @@
-use crate::utils::socket::bind_socket;
+use crate::utils::{logging::PolarBearExpectation, socket::bind_socket};
 use smithay::reexports::wayland_server::{
     backend::{ClientData, ClientId, DisconnectReason},
     protocol::{wl_buffer, wl_surface::WlSurface},
@@ -169,11 +169,11 @@ pub struct ClientState {
 
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {
-        println!("initialized");
+        log::info!("initialized");
     }
 
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {
-        println!("disconnected");
+        log::info!("disconnected");
     }
 }
 
@@ -201,7 +201,9 @@ impl Compositor {
         let start_time = Instant::now();
 
         // Key repeat rate and delay are in milliseconds: https://wayland-book.com/seat/keyboard.html
-        let keyboard = seat.add_keyboard(Default::default(), 1000, 200).unwrap();
+        let keyboard = seat
+            .add_keyboard(Default::default(), 1000, 200)
+            .pb_expect("Failed to add keyboard");
         let touch = seat.add_touch();
 
         let state = State {

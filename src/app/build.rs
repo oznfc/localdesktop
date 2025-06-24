@@ -1,4 +1,5 @@
 use crate::proot::setup::setup;
+use crate::proot::setup::SetupMessage;
 use crate::utils::logging::PolarBearExpectation;
 use crate::wayland::compositor::Compositor;
 use crate::wayland::winit_backend::WinitGraphicsBackend;
@@ -11,7 +12,6 @@ use std::thread;
 use websocket::sync::Server;
 use websocket::OwnedMessage;
 use winit::platform::android::activity::AndroidApp;
-use crate::proot::setup::SetupMessage;
 
 pub struct PolarBearApp {
     pub frontend: PolarBearFrontend,
@@ -53,7 +53,7 @@ impl WebviewBackend {
 
                 // Reject new connections if there is already an active client
                 if active_client.is_some() {
-                    println!("Rejecting new connection: already an active client");
+                    log::info!("Rejecting new connection: already an active client");
                     request.reject().unwrap();
                     continue;
                 }
@@ -66,7 +66,7 @@ impl WebviewBackend {
 
                 let client = request.use_protocol("rust-websocket").accept().unwrap();
                 let ip = client.peer_addr().unwrap();
-                println!("Connection from {}", ip);
+                log::info!("Connection from {}", ip);
 
                 // Store the new client
                 *active_client = Some(client); // Store the writer part of the connection
@@ -87,7 +87,7 @@ impl WebviewBackend {
                                 "progress": progress,
                                 "message": msg,
                                 "isError": true
-                            })
+                            }),
                         };
 
                         let message = OwnedMessage::Text(json_message.to_string());
@@ -96,7 +96,7 @@ impl WebviewBackend {
                         if let Some(writer) = active_client.as_mut() {
                             if writer.send_message(&message).is_err() {
                                 // If sending fails, disconnect the client
-                                println!("Client disconnected");
+                                log::info!("Client disconnected");
                                 *active_client = None;
                                 break;
                             }

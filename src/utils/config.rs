@@ -22,6 +22,8 @@ pub const PACMAN_CHECKING_COMMAND: &str =
 
 pub const PACMAN_INSTALL_PACKAGES: &str = "xorg-xwayland xfce4 onboard";
 
+pub const SENTRY_DSN: &str = "https://38b0318da81ccc308c2c75686371ddda@o4509548388417536.ingest.de.sentry.io/4509548392480848";
+
 pub const CONFIG_FILE: &str = "/etc/localdesktop/localdesktop.toml";
 
 #[derive(Debug, Serialize, Deserialize, Default)]
