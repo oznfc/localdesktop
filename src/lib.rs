@@ -3,6 +3,8 @@
 pub mod android_main;
 pub mod app {
     pub mod build;
+    pub mod event_centralizer;
+    pub mod event_handler;
     pub mod run;
 }
 pub mod wayland {
