@@ -9,6 +9,7 @@ pub mod app {
 }
 pub mod wayland {
     pub mod compositor;
+    pub mod element;
     pub mod input;
     pub mod keymap;
     pub mod winit_backend;

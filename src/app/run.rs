@@ -1,5 +1,5 @@
 use super::build::{PolarBearApp, PolarBearBackend};
-use crate::app::event_centralizer::{centralize, CentralizedEvent};
+use crate::app::event_centralizer::{centralize_device_event, centralize_window_event};
 use crate::app::event_handler::handle;
 use crate::proot::launch::launch;
 use crate::utils::config;
@@ -80,16 +80,25 @@ impl ApplicationHandler for PolarBearApp {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         if let PolarBearBackend::Wayland(backend) = &mut self.backend {
             // Map raw events to our own events
-            let event = centralize(event, backend);
+            let event = centralize_window_event(event, backend);
 
             // Handle the centralized events
-            match event {
-                CentralizedEvent::CloseRequested => {
-                    log::info!("The close button was pressed; stopping");
-                    event_loop.exit();
-                }
-                _ => handle(event, backend),
-            }
+            handle(event, backend, event_loop);
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        if let PolarBearBackend::Wayland(backend) = &mut self.backend {
+            // Map raw events to our own events
+            let event = centralize_device_event(event, backend);
+
+            // Handle the centralized events
+            handle(event, backend, event_loop);
         }
     }
 }
