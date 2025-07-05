@@ -1,6 +1,6 @@
 use crate::{
+    app::backend::wayland::element::WindowElement,
     utils::{logging::PolarBearExpectation, socket::bind_socket},
-    wayland::element::WindowElement,
 };
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,

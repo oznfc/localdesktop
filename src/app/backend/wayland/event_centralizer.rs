@@ -1,10 +1,12 @@
-use crate::app::build::WaylandBackend;
-use crate::wayland::input::{
-    RelativePosition, WinitInput, WinitKeyboardInputEvent, WinitMouseInputEvent,
-    WinitMouseMovedEvent, WinitMouseWheelEvent, WinitTouchCancelledEvent, WinitTouchEndedEvent,
-    WinitTouchMovedEvent, WinitTouchStartedEvent,
+use crate::app::backend::wayland::{
+    input::{
+        RelativePosition, WinitInput, WinitKeyboardInputEvent, WinitMouseInputEvent,
+        WinitMouseMovedEvent, WinitMouseWheelEvent, WinitTouchCancelledEvent, WinitTouchEndedEvent,
+        WinitTouchMovedEvent, WinitTouchStartedEvent,
+    },
+    keymap::physicalkey_to_scancode,
+    WaylandBackend,
 };
-use crate::wayland::keymap::physicalkey_to_scancode;
 use smithay::backend::input::InputEvent;
 use smithay::utils::{Physical, Size};
 use winit::event::{DeviceEvent, ElementState, Touch, TouchPhase, WindowEvent};

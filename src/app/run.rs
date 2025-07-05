@@ -1,12 +1,11 @@
 use super::build::{PolarBearApp, PolarBearBackend};
-use crate::app::event_centralizer::{centralize_device_event, centralize_window_event};
-use crate::app::event_handler::handle;
+use crate::app::backend::wayland::{
+    bind, centralize_device_event, centralize_window_event, handle, State,
+};
 use crate::proot::launch::launch;
 use crate::utils::config;
 use crate::utils::ndk::run_in_jvm;
 use crate::utils::webview::show_webview_popup;
-use crate::wayland::compositor::State;
-use crate::wayland::winit_backend::bind;
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::Transform;
 use std::thread;

@@ -1,8 +1,9 @@
-use crate::app::build::WaylandBackend;
-use crate::app::event_centralizer::CentralizedEvent;
+use crate::app::backend::wayland::{
+    compositor::{send_frames_surface_tree, ClientState, State},
+    element::WindowElement,
+    CentralizedEvent, WaylandBackend,
+};
 use crate::utils::logging::PolarBearExpectation;
-use crate::wayland::compositor::{send_frames_surface_tree, ClientState, State};
-use crate::wayland::element::WindowElement;
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, AxisSource, Event, InputEvent, KeyboardKeyEvent, PointerAxisEvent,
     PointerButtonEvent, TouchEvent,
@@ -393,6 +394,7 @@ pub fn handle(event: CentralizedEvent, backend: &mut WaylandBackend, event_loop:
                 pointer.frame(&mut compositor.state);
             }
             InputEvent::PointerAxis { event } => {
+                println!("🐻 {:?}", event);
                 let horizontal_amount = event.amount(Axis::Horizontal).unwrap_or_else(|| {
                     event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.
                 });

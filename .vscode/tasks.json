@@ -5,7 +5,13 @@
       "type": "shell",
       "label": "[Android] Build",
       "command": "~/.cargo/bin/x",
-      "args": ["build", "--platform=android", "--arch=arm64"],
+      "args": [
+        "build",
+        "--release",
+        "--platform=android",
+        "--arch=arm64",
+        "--format=apk"
+      ],
       "group": {
         "kind": "build",
         "isDefault": true
@@ -13,9 +19,26 @@
     },
     {
       "type": "shell",
+      "label": "[Android] Build Debug",
+      "command": "~/.cargo/bin/x",
+      "args": [
+        "build",
+        "--platform=android",
+        "--arch=arm64",
+        "--format=apk"
+      ],
+      "group": {
+        "kind": "build",
+      }
+    },
+    {
+      "type": "shell",
       "label": "[Android] Logcat",
       "command": "sh",
-      "args": ["-c", "adb logcat -c && adb logcat -s RustStdoutStderr"]
+      "args": [
+        "-c",
+        "adb logcat -c && adb logcat -s RustStdoutStderr"
+      ]
     }
   ]
 }
