@@ -1,7 +1,5 @@
 use super::build::{PolarBearApp, PolarBearBackend};
-use crate::app::backend::wayland::{
-    bind, centralize_device_event, centralize_window_event, handle, State,
-};
+use crate::app::backend::wayland::{bind, centralize, handle, State};
 use crate::proot::launch::launch;
 use crate::utils::config;
 use crate::utils::ndk::run_in_jvm;
@@ -79,22 +77,7 @@ impl ApplicationHandler for PolarBearApp {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         if let PolarBearBackend::Wayland(backend) = &mut self.backend {
             // Map raw events to our own events
-            let event = centralize_window_event(event, backend);
-
-            // Handle the centralized events
-            handle(event, backend, event_loop);
-        }
-    }
-
-    fn device_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
-        event: winit::event::DeviceEvent,
-    ) {
-        if let PolarBearBackend::Wayland(backend) = &mut self.backend {
-            // Map raw events to our own events
-            let event = centralize_device_event(event, backend);
+            let event = centralize(event, backend);
 
             // Handle the centralized events
             handle(event, backend, event_loop);

@@ -7,7 +7,7 @@ mod keymap;
 mod winit_backend;
 
 pub use compositor::{Compositor, State};
-pub use event_centralizer::{centralize_device_event, centralize_window_event, CentralizedEvent};
+pub use event_centralizer::{centralize, CentralizedEvent};
 pub use event_handler::handle;
 pub use winit_backend::{bind, WinitGraphicsBackend};
 

@@ -70,3 +70,4 @@ features = [
 
 [patch.crates-io]
 smithay = { path = "patches/smithay" }
+winit = { path = "patches/winit" }
