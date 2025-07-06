@@ -16,7 +16,7 @@ use crate::cursor::Cursor;
 use crate::dpi::{PhysicalPosition, PhysicalSize, Position, Size};
 use crate::error;
 use crate::error::EventLoopError;
-use crate::event::{self, Force, InnerSizeWriter, StartCause};
+use crate::event::{self, Force, InnerSizeWriter, MouseButton, StartCause};
 use crate::event_loop::{self, ActiveEventLoop as RootAEL, ControlFlow, DeviceEvents};
 use crate::platform::pump_events::PumpStatus;
 use crate::platform_impl::Fullscreen;
@@ -374,52 +374,147 @@ impl<T: 'static> EventLoop<T> {
         let mut input_status = InputStatus::Handled;
         match event {
             InputEvent::MotionEvent(motion_event) => {
-                let window_id = window::WindowId(WindowId);
-                let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
+                // Get the tool type of the primary pointer
+                let pointer = motion_event.pointer_at_index(motion_event.pointer_index());
+                let tool_type = pointer.tool_type();
+                let action = motion_event.action();
 
-                let phase = match motion_event.action() {
-                    MotionAction::Down | MotionAction::PointerDown => {
-                        Some(event::TouchPhase::Started)
+                match tool_type {
+                    android_activity::input::ToolType::Mouse => {
+                        let window_id = window::WindowId(WindowId);
+                        let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
+
+                        // Mouse move (hover or drag)
+                        match action {
+                            MotionAction::HoverMove | MotionAction::Move => {
+                                let location =
+                                    PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
+                                callback(
+                                    event::Event::WindowEvent {
+                                        window_id,
+                                        event: event::WindowEvent::CursorMoved {
+                                            device_id,
+                                            position: location,
+                                        },
+                                    },
+                                    self.window_target(),
+                                );
+                            },
+                            MotionAction::ButtonPress
+                            | MotionAction::Down
+                            | MotionAction::PointerDown
+                            | MotionAction::ButtonRelease
+                            | MotionAction::Up
+                            | MotionAction::PointerUp => {
+                                // Mouse button pressed
+                                let button_state = motion_event.button_state();
+                                callback(
+                                    event::Event::WindowEvent {
+                                        window_id,
+                                        event: event::WindowEvent::MouseInput {
+                                            device_id,
+                                            state: if action == MotionAction::ButtonRelease
+                                                || action == MotionAction::Up
+                                                || action == MotionAction::PointerUp
+                                            {
+                                                event::ElementState::Pressed
+                                            } else {
+                                                event::ElementState::Released
+                                            },
+                                            button: match button_state {
+                                                _ if button_state.primary()
+                                                    || button_state.stylus_primary() =>
+                                                {
+                                                    MouseButton::Left
+                                                },
+                                                _ if button_state.secondary()
+                                                    || button_state.stylus_secondary() =>
+                                                {
+                                                    MouseButton::Right
+                                                },
+                                                _ if button_state.teriary() => MouseButton::Middle,
+                                                _ if button_state.back() => MouseButton::Back,
+                                                _ if button_state.forward() => MouseButton::Forward,
+                                                _ => MouseButton::Other(0),
+                                            },
+                                        },
+                                    },
+                                    self.window_target(),
+                                );
+                            },
+                            MotionAction::Scroll => {
+                                // Mouse wheel scroll
+                                let h = pointer.axis_value(android_activity::input::Axis::Hscroll);
+                                let v = pointer.axis_value(android_activity::input::Axis::Vscroll);
+                                if h != 0.0 || v != 0.0 {
+                                    callback(
+                                        event::Event::WindowEvent {
+                                            window_id,
+                                            event: event::WindowEvent::MouseWheel {
+                                                device_id,
+                                                delta: event::MouseScrollDelta::LineDelta(
+                                                    h as f32, v as f32,
+                                                ),
+                                                phase: event::TouchPhase::Moved,
+                                            },
+                                        },
+                                        self.window_target(),
+                                    );
+                                }
+                            },
+                            _ => {},
+                        }
                     },
-                    MotionAction::Up | MotionAction::PointerUp => Some(event::TouchPhase::Ended),
-                    MotionAction::Move => Some(event::TouchPhase::Moved),
-                    MotionAction::Cancel => Some(event::TouchPhase::Cancelled),
                     _ => {
-                        None // TODO mouse events
-                    },
-                };
-                if let Some(phase) = phase {
-                    let pointers: Box<dyn Iterator<Item = android_activity::input::Pointer<'_>>> =
-                        match phase {
-                            event::TouchPhase::Started | event::TouchPhase::Ended => {
-                                Box::new(std::iter::once(
-                                    motion_event.pointer_at_index(motion_event.pointer_index()),
-                                ))
-                            },
-                            event::TouchPhase::Moved | event::TouchPhase::Cancelled => {
-                                Box::new(motion_event.pointers())
-                            },
-                        };
+                        let window_id = window::WindowId(WindowId);
+                        let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
 
-                    for pointer in pointers {
-                        let location =
-                            PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
-                        trace!(
-                            "Input event {device_id:?}, {phase:?}, loc={location:?}, \
-                             pointer={pointer:?}"
-                        );
-                        let event = event::Event::WindowEvent {
-                            window_id,
-                            event: event::WindowEvent::Touch(event::Touch {
-                                device_id,
-                                phase,
-                                location,
-                                id: pointer.pointer_id() as u64,
-                                force: Some(Force::Normalized(pointer.pressure() as f64)),
-                            }),
+                        let phase = match action {
+                            MotionAction::Down | MotionAction::PointerDown => {
+                                Some(event::TouchPhase::Started)
+                            },
+                            MotionAction::Up | MotionAction::PointerUp => {
+                                Some(event::TouchPhase::Ended)
+                            },
+                            MotionAction::Move => Some(event::TouchPhase::Moved),
+                            MotionAction::Cancel => Some(event::TouchPhase::Cancelled),
+                            _ => None,
                         };
-                        callback(event, self.window_target());
-                    }
+                        if let Some(phase) = phase {
+                            let pointers: Box<
+                                dyn Iterator<Item = android_activity::input::Pointer<'_>>,
+                            > = match phase {
+                                event::TouchPhase::Started | event::TouchPhase::Ended => {
+                                    Box::new(std::iter::once(
+                                        motion_event.pointer_at_index(motion_event.pointer_index()),
+                                    ))
+                                },
+                                event::TouchPhase::Moved | event::TouchPhase::Cancelled => {
+                                    Box::new(motion_event.pointers())
+                                },
+                            };
+
+                            for pointer in pointers {
+                                let location =
+                                    PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
+                                trace!(
+                                    "Input event {device_id:?}, {phase:?}, loc={location:?}, \
+                             pointer={pointer:?}"
+                                );
+                                let event = event::Event::WindowEvent {
+                                    window_id,
+                                    event: event::WindowEvent::Touch(event::Touch {
+                                        device_id,
+                                        phase,
+                                        location,
+                                        id: pointer.pointer_id() as u64,
+                                        force: Some(Force::Normalized(pointer.pressure() as f64)),
+                                    }),
+                                };
+                                callback(event, self.window_target());
+                            }
+                        }
+                    },
                 }
             },
             InputEvent::KeyEvent(key) => {
