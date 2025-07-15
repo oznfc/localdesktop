@@ -1,4 +1,4 @@
-icon: assets/ic_launcher/1024.png
+icon: assets/icon.png
 android:
   assets:
     - assets/setup-progress.html
