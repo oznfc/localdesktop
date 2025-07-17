@@ -376,11 +376,16 @@ impl<T: 'static> EventLoop<T> {
             InputEvent::MotionEvent(motion_event) => {
                 // Get the tool type of the primary pointer
                 let pointer = motion_event.pointer_at_index(motion_event.pointer_index());
-                let tool_type = pointer.tool_type();
                 let action = motion_event.action();
 
-                match tool_type {
-                    android_activity::input::ToolType::Mouse => {
+                // Do not use `tool_type()`, as it reports `Finger` even if using Dex built-in trackpad
+                // let tool_type = pointer.tool_type();
+                // Instead, use `source()``, as it correctly reports `Mouse`
+                // let tool_type = pointer.tool_type();
+                let source = motion_event.source();
+
+                match source {
+                    android_activity::input::Source::Mouse => {
                         let window_id = window::WindowId(WindowId);
                         let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
 
