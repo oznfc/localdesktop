@@ -357,7 +357,7 @@ pub fn handle(event: CentralizedEvent, backend: &mut WaylandBackend, event_loop:
                 if let Some(surface) = get_surface(&compositor.state) {
                     pointer.motion(
                         &mut compositor.state,
-                        Some((surface.wl_surface().clone(), pointer_location)),
+                        Some((surface.wl_surface().clone(), (0f64, 0f64).into())),
                         &pointer::MotionEvent {
                             location: pointer_location,
                             serial,
@@ -376,25 +376,30 @@ pub fn handle(event: CentralizedEvent, backend: &mut WaylandBackend, event_loop:
                 let compositor = &mut backend.compositor;
                 let pointer = compositor.pointer.clone();
 
-                // if ButtonState::Pressed == state {
-                //     compositor
-                //         .state
-                //         .update_keyboard_focus(pointer.current_location(), serial);
-                // };
-
-                pointer.button(
-                    &mut compositor.state,
-                    &pointer::ButtonEvent {
-                        button,
-                        state: state.try_into().unwrap(),
-                        serial,
-                        time: event.time_msec(),
-                    },
-                );
-                pointer.frame(&mut compositor.state);
+                match event.button {
+                    winit::event::MouseButton::Other(_) => {} // On Samsung Dex, a click using built-in trackpad generated 2 ButtonState::Pressed events, one with MouseButton::Other(_), and another with MouseButton::Left. Just ignore the first for now
+                    _ => {
+                        if let Some(surface) = get_surface(&compositor.state) {
+                            compositor.keyboard.set_focus(
+                                &mut compositor.state,
+                                Some(surface.wl_surface().clone()),
+                                0.into(),
+                            );
+                        }
+                        pointer.button(
+                            &mut compositor.state,
+                            &pointer::ButtonEvent {
+                                button,
+                                state: state.try_into().unwrap(),
+                                serial,
+                                time: event.time_msec(),
+                            },
+                        );
+                        pointer.frame(&mut compositor.state);
+                    }
+                }
             }
             InputEvent::PointerAxis { event } => {
-                println!("🐻 {:?}", event);
                 let horizontal_amount = event.amount(Axis::Horizontal).unwrap_or_else(|| {
                     event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.
                 });

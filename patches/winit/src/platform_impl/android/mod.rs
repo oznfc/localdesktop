@@ -388,6 +388,7 @@ impl<T: 'static> EventLoop<T> {
                     android_activity::input::Source::Mouse => {
                         let window_id = window::WindowId(WindowId);
                         let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
+                        let button = motion_event.action_button();
 
                         // Mouse move (hover or drag)
                         match action {
@@ -412,7 +413,6 @@ impl<T: 'static> EventLoop<T> {
                             | MotionAction::Up
                             | MotionAction::PointerUp => {
                                 // Mouse button pressed
-                                let button_state = motion_event.button_state();
                                 callback(
                                     event::Event::WindowEvent {
                                         window_id,
@@ -422,25 +422,20 @@ impl<T: 'static> EventLoop<T> {
                                                 || action == MotionAction::Up
                                                 || action == MotionAction::PointerUp
                                             {
-                                                event::ElementState::Pressed
-                                            } else {
                                                 event::ElementState::Released
+                                            } else {
+                                                event::ElementState::Pressed
                                             },
-                                            button: match button_state {
-                                                _ if button_state.primary()
-                                                    || button_state.stylus_primary() =>
-                                                {
-                                                    MouseButton::Left
-                                                },
-                                                _ if button_state.secondary()
-                                                    || button_state.stylus_secondary() =>
-                                                {
-                                                    MouseButton::Right
-                                                },
-                                                _ if button_state.teriary() => MouseButton::Middle,
-                                                _ if button_state.back() => MouseButton::Back,
-                                                _ if button_state.forward() => MouseButton::Forward,
-                                                _ => MouseButton::Other(0),
+                                            button: match button {
+                                                android_activity::input::Button::Primary => MouseButton::Left,
+                                                android_activity::input::Button::Secondary => MouseButton::Right,
+                                                android_activity::input::Button::Tertiary => MouseButton::Middle,
+                                                android_activity::input::Button::Back => MouseButton::Back,
+                                                android_activity::input::Button::Forward => MouseButton::Forward,
+                                                android_activity::input::Button::StylusPrimary => MouseButton::Left,
+                                                android_activity::input::Button::StylusSecondary => MouseButton::Right,
+                                                android_activity::input::Button::__Unknown(unknown_button) => MouseButton::Other(unknown_button as u16),
+                                                _ => MouseButton::Other(0)
                                             },
                                         },
                                     },
@@ -449,6 +444,7 @@ impl<T: 'static> EventLoop<T> {
                             },
                             MotionAction::Scroll => {
                                 // Mouse wheel scroll
+                                // TODO: Why this event is not firing on Samsung Dex?
                                 let h = pointer.axis_value(android_activity::input::Axis::Hscroll);
                                 let v = pointer.axis_value(android_activity::input::Axis::Vscroll);
                                 if h != 0.0 || v != 0.0 {
