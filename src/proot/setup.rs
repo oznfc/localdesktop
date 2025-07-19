@@ -1,12 +1,17 @@
 use super::process::ArchProcess;
 use crate::{
-    app::build::{PolarBearBackend, WaylandBackend, WebviewBackend},
+    app::{
+        backend::{
+            wayland::{Compositor, WaylandBackend},
+            webview::WebviewBackend,
+        },
+        build::PolarBearBackend,
+    },
     utils::{
         application_context::get_application_context,
         config::{ARCH_FS_ARCHIVE, ARCH_FS_ROOT, PACMAN_CHECKING_COMMAND, PACMAN_INSTALL_PACKAGES},
         logging::PolarBearExpectation,
     },
-    wayland::compositor::Compositor,
 };
 use pathdiff::diff_paths;
 use smithay::utils::Clock;
@@ -14,7 +19,7 @@ use std::{
     fs::{self, File},
     io::{Read, Write},
     os::unix::fs::{symlink, PermissionsExt},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         mpsc::{self, Sender},
         Arc, Mutex,

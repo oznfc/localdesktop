@@ -6,14 +6,12 @@
   "configurations": [
     {
       "request": "launch",
-      // CodeLLDB v1.11.2 has a bug when launching (https://github.com/vadimcn/codelldb/issues/1220).
-      // Downgrade to v1.11.1 via Extensions tab > CodeLLDB > Install Specific Version... > v1.11.1.
       "type": "android-debug",
       "name": "[Android] Debug",
-      "preLaunchTask": "[Android] Build",
+      "preLaunchTask": "[Android] Build Debug",
       "target": "select",
       "mode": "native",
-      "apkPath": "${workspaceFolder}/target/x/debug/android/localdesktop.apk",
+      "apkPath": "${workspaceFolder}/target/x/debug/android/gradle/app/build/outputs/apk/debug/app-debug.apk",
       "launchActivity": "android.app.NativeActivity"
     }
   ]

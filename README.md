@@ -37,8 +37,6 @@ Recommended setup:
   - [Android Debug](https://marketplace.visualstudio.com/items?itemName=nisargjhaveri.android-debug)
   - [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
 
-    > **Note**: CodeLLDB v1.11.2 has a bug when launching with Android Debug ([issue link](https://github.com/vadimcn/codelldb/issues/1220)). Please downgrade to v1.11.1 via Extensions tab > CodeLLDB > Install Specific Version... > v1.11.1 to work around the issue.
-
 - **Instructions**:
 
   1. Open Visual Studio Code.
@@ -47,7 +45,7 @@ Recommended setup:
      - Install the APK on a selectable device, and launch the app in debug mode.
      - Redirect stdout/stderr output to the terminal.
 
-![Debugging Capability](./assets/docs/debugging-capability.png)
+![It is easy to debug](./assets/docs/debugable.webp)
 
 > **Tip**: You can debug the app on either a physical device or a virtual device.
 

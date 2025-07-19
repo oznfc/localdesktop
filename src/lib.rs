@@ -4,12 +4,10 @@ pub mod android_main;
 pub mod app {
     pub mod build;
     pub mod run;
-}
-pub mod wayland {
-    pub mod compositor;
-    pub mod input;
-    pub mod keymap;
-    pub mod winit_backend;
+    pub mod backend {
+        pub mod wayland;
+        pub mod webview;
+    }
 }
 pub mod proot {
     pub mod launch;

@@ -1,4 +1,4 @@
-icon: assets/ic_launcher/1024.png
+icon: assets/icon.png
 android:
   assets:
     - assets/setup-progress.html
@@ -18,3 +18,6 @@ android:
       - name: android.permission.INTERNET
       - name: android.permission.ACCESS_NETWORK_STATE
       - name: android.permission.POST_NOTIFICATIONS
+    uses_feature:
+      - name: android.hardware.type.pc
+        required: false
