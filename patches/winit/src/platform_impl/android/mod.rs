@@ -380,14 +380,14 @@ impl<T: 'static> EventLoop<T> {
                 let pointer = motion_event.pointer_at_index(motion_event.pointer_index());
                 let action = motion_event.action();
 
-                // Do not use `tool_type()`, as it reports `Finger` even if using Dex built-in trackpad
-                // Instead, use `source()``, as it correctly reports `Mouse`
-                let source = motion_event.source();
                 let tool_type = pointer.tool_type();
+                // On Samsung Dex, `tool_type()` still reports `Finger` when using built-in trackpad
+                // So we also check for `source()`, as it correctly reports `Mouse` (although other devices such as Desktop AVDs report `Unknown``)
+                let source = motion_event.source();
 
-                if source == Source::Mouse
+                if tool_type != ToolType::Finger
+                    || source == Source::Mouse
                     || source == Source::Touchpad
-                    || tool_type != ToolType::Finger
                 {
                     let window_id = window::WindowId(WindowId);
                     let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
