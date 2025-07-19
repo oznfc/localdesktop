@@ -5,7 +5,7 @@ use crate::app::backend::wayland::{
 };
 use crate::utils::logging::PolarBearExpectation;
 use smithay::backend::input::{
-    AbsolutePositionEvent, Axis, AxisSource, Event, InputEvent, KeyboardKeyEvent, PointerAxisEvent,
+    AbsolutePositionEvent, Axis, Event, InputEvent, KeyboardKeyEvent, PointerAxisEvent,
     PointerButtonEvent, TouchEvent,
 };
 use smithay::backend::renderer::element::surface::{
@@ -376,36 +376,31 @@ pub fn handle(event: CentralizedEvent, backend: &mut WaylandBackend, event_loop:
                 let compositor = &mut backend.compositor;
                 let pointer = compositor.pointer.clone();
 
-                match event.button {
-                    winit::event::MouseButton::Other(_) => {} // On Samsung Dex, a click using built-in trackpad generated 2 ButtonState::Pressed events, one with MouseButton::Other(_), and another with MouseButton::Left. Just ignore the first for now
-                    _ => {
-                        if let Some(surface) = get_surface(&compositor.state) {
-                            compositor.keyboard.set_focus(
-                                &mut compositor.state,
-                                Some(surface.wl_surface().clone()),
-                                0.into(),
-                            );
-                        }
-                        pointer.button(
-                            &mut compositor.state,
-                            &pointer::ButtonEvent {
-                                button,
-                                state: state.try_into().unwrap(),
-                                serial,
-                                time: event.time_msec(),
-                            },
-                        );
-                        pointer.frame(&mut compositor.state);
-                    }
+                if let Some(surface) = get_surface(&compositor.state) {
+                    compositor.keyboard.set_focus(
+                        &mut compositor.state,
+                        Some(surface.wl_surface().clone()),
+                        0.into(),
+                    );
                 }
+                pointer.button(
+                    &mut compositor.state,
+                    &pointer::ButtonEvent {
+                        button,
+                        state: state.try_into().unwrap(),
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+                pointer.frame(&mut compositor.state);
             }
             InputEvent::PointerAxis { event } => {
-                let horizontal_amount = event.amount(Axis::Horizontal).unwrap_or_else(|| {
-                    event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.
-                });
-                let vertical_amount = event.amount(Axis::Vertical).unwrap_or_else(|| {
-                    event.amount_v120(Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.
-                });
+                let horizontal_amount = event
+                    .amount(Axis::Horizontal)
+                    .unwrap_or_else(|| event.amount_v120(Axis::Horizontal).unwrap_or(0.0) / 120.);
+                let vertical_amount = event
+                    .amount(Axis::Vertical)
+                    .unwrap_or_else(|| event.amount_v120(Axis::Vertical).unwrap_or(0.0) / 120.);
                 let horizontal_amount_discrete = event.amount_v120(Axis::Horizontal);
                 let vertical_amount_discrete = event.amount_v120(Axis::Vertical);
 
@@ -432,13 +427,11 @@ pub fn handle(event: CentralizedEvent, backend: &mut WaylandBackend, event_loop:
                             frame = frame.v120(Axis::Vertical, discrete as i32);
                         }
                     }
-                    if event.source() == AxisSource::Finger {
-                        if event.amount(Axis::Horizontal) == Some(0.0) {
-                            frame = frame.stop(Axis::Horizontal);
-                        }
-                        if event.amount(Axis::Vertical) == Some(0.0) {
-                            frame = frame.stop(Axis::Vertical);
-                        }
+                    if event.amount(Axis::Horizontal) == Some(0.0) {
+                        frame = frame.stop(Axis::Horizontal);
+                    }
+                    if event.amount(Axis::Vertical) == Some(0.0) {
+                        frame = frame.stop(Axis::Vertical);
                     }
                     let compositor = &mut backend.compositor;
                     let pointer = compositor.pointer.clone();

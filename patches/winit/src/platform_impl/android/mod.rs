@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use android_activity::input::{InputEvent, KeyAction, Keycode, MotionAction};
+use android_activity::input::{
+    self, Button, InputEvent, KeyAction, Keycode, MotionAction, Source, ToolType,
+};
 use android_activity::{
     AndroidApp, AndroidAppWaker, ConfigurationRef, InputStatus, MainEvent, Rect,
 };
@@ -16,7 +18,7 @@ use crate::cursor::Cursor;
 use crate::dpi::{PhysicalPosition, PhysicalSize, Position, Size};
 use crate::error;
 use crate::error::EventLoopError;
-use crate::event::{self, Force, InnerSizeWriter, MouseButton, StartCause};
+use crate::event::{self, Event, Force, InnerSizeWriter, MouseButton, StartCause, WindowEvent};
 use crate::event_loop::{self, ActiveEventLoop as RootAEL, ControlFlow, DeviceEvents};
 use crate::platform::pump_events::PumpStatus;
 use crate::platform_impl::Fullscreen;
@@ -197,7 +199,7 @@ impl<T: 'static> EventLoop<T> {
 
     fn single_iteration<F>(&mut self, main_event: Option<MainEvent<'_>>, callback: &mut F)
     where
-        F: FnMut(event::Event<T>, &RootAEL),
+        F: FnMut(Event<T>, &RootAEL),
     {
         trace!("Mainloop iteration");
 
@@ -205,17 +207,17 @@ impl<T: 'static> EventLoop<T> {
         let mut pending_redraw = self.pending_redraw;
         let mut resized = false;
 
-        callback(event::Event::NewEvents(cause), self.window_target());
+        callback(Event::NewEvents(cause), self.window_target());
 
         if let Some(event) = main_event {
             trace!("Handling main event {:?}", event);
 
             match event {
                 MainEvent::InitWindow { .. } => {
-                    callback(event::Event::Resumed, self.window_target());
+                    callback(Event::Resumed, self.window_target());
                 },
                 MainEvent::TerminateWindow { .. } => {
-                    callback(event::Event::Suspended, self.window_target());
+                    callback(Event::Suspended, self.window_target());
                 },
                 MainEvent::WindowResized { .. } => resized = true,
                 MainEvent::RedrawNeeded { .. } => pending_redraw = true,
@@ -225,9 +227,9 @@ impl<T: 'static> EventLoop<T> {
                 MainEvent::GainedFocus => {
                     HAS_FOCUS.store(true, Ordering::Relaxed);
                     callback(
-                        event::Event::WindowEvent {
+                        Event::WindowEvent {
                             window_id: window::WindowId(WindowId),
-                            event: event::WindowEvent::Focused(true),
+                            event: WindowEvent::Focused(true),
                         },
                         self.window_target(),
                     );
@@ -235,9 +237,9 @@ impl<T: 'static> EventLoop<T> {
                 MainEvent::LostFocus => {
                     HAS_FOCUS.store(false, Ordering::Relaxed);
                     callback(
-                        event::Event::WindowEvent {
+                        Event::WindowEvent {
                             window_id: window::WindowId(WindowId),
-                            event: event::WindowEvent::Focused(false),
+                            event: WindowEvent::Focused(false),
                         },
                         self.window_target(),
                     );
@@ -250,9 +252,9 @@ impl<T: 'static> EventLoop<T> {
                         let new_inner_size = Arc::new(Mutex::new(
                             MonitorHandle::new(self.android_app.clone()).size(),
                         ));
-                        let event = event::Event::WindowEvent {
+                        let event = Event::WindowEvent {
                             window_id: window::WindowId(WindowId),
-                            event: event::WindowEvent::ScaleFactorChanged {
+                            event: WindowEvent::ScaleFactorChanged {
                                 inner_size_writer: InnerSizeWriter::new(Arc::downgrade(
                                     &new_inner_size,
                                 )),
@@ -263,7 +265,7 @@ impl<T: 'static> EventLoop<T> {
                     }
                 },
                 MainEvent::LowMemory => {
-                    callback(event::Event::MemoryWarning, self.window_target());
+                    callback(Event::MemoryWarning, self.window_target());
                 },
                 MainEvent::Start => {
                     // XXX: how to forward this state to applications?
@@ -338,9 +340,9 @@ impl<T: 'static> EventLoop<T> {
                 } else {
                     PhysicalSize::new(0, 0)
                 };
-                let event = event::Event::WindowEvent {
+                let event = Event::WindowEvent {
                     window_id: window::WindowId(WindowId),
-                    event: event::WindowEvent::Resized(size),
+                    event: WindowEvent::Resized(size),
                 };
                 callback(event, self.window_target());
             }
@@ -348,16 +350,16 @@ impl<T: 'static> EventLoop<T> {
             pending_redraw |= self.redraw_flag.get_and_reset();
             if pending_redraw {
                 pending_redraw = false;
-                let event = event::Event::WindowEvent {
+                let event = Event::WindowEvent {
                     window_id: window::WindowId(WindowId),
-                    event: event::WindowEvent::RedrawRequested,
+                    event: WindowEvent::RedrawRequested,
                 };
                 callback(event, self.window_target());
             }
         }
 
         // This is always the last event we dispatch before poll again
-        callback(event::Event::AboutToWait, self.window_target());
+        callback(Event::AboutToWait, self.window_target());
 
         self.pending_redraw = pending_redraw;
     }
@@ -369,7 +371,7 @@ impl<T: 'static> EventLoop<T> {
         callback: &mut F,
     ) -> InputStatus
     where
-        F: FnMut(event::Event<T>, &RootAEL),
+        F: FnMut(Event<T>, &RootAEL),
     {
         let mut input_status = InputStatus::Handled;
         match event {
@@ -379,143 +381,161 @@ impl<T: 'static> EventLoop<T> {
                 let action = motion_event.action();
 
                 // Do not use `tool_type()`, as it reports `Finger` even if using Dex built-in trackpad
-                // let tool_type = pointer.tool_type();
                 // Instead, use `source()``, as it correctly reports `Mouse`
-                // let tool_type = pointer.tool_type();
                 let source = motion_event.source();
+                let tool_type = pointer.tool_type();
 
-                match source {
-                    android_activity::input::Source::Mouse => {
-                        let window_id = window::WindowId(WindowId);
-                        let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
-                        let button = motion_event.action_button();
+                if source == Source::Mouse
+                    || source == Source::Touchpad
+                    || tool_type != ToolType::Finger
+                {
+                    let window_id = window::WindowId(WindowId);
+                    let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
+                    let button = motion_event.action_button();
 
-                        // Mouse move (hover or drag)
-                        match action {
-                            MotionAction::HoverMove | MotionAction::Move => {
-                                let location =
-                                    PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
-                                callback(
-                                    event::Event::WindowEvent {
-                                        window_id,
-                                        event: event::WindowEvent::CursorMoved {
-                                            device_id,
-                                            position: location,
-                                        },
+                    // Mouse move (hover or drag)
+                    match action {
+                        MotionAction::HoverMove | MotionAction::Move => {
+                            let location =
+                                PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
+                            callback(
+                                Event::WindowEvent {
+                                    window_id,
+                                    event: WindowEvent::CursorMoved {
+                                        device_id,
+                                        position: location,
                                     },
-                                    self.window_target(),
-                                );
-                            },
-                            MotionAction::ButtonPress
-                            | MotionAction::Down
-                            | MotionAction::PointerDown
-                            | MotionAction::ButtonRelease
-                            | MotionAction::Up
-                            | MotionAction::PointerUp => {
-                                // Mouse button pressed
-                                callback(
-                                    event::Event::WindowEvent {
-                                        window_id,
-                                        event: event::WindowEvent::MouseInput {
-                                            device_id,
-                                            state: if action == MotionAction::ButtonRelease
-                                                || action == MotionAction::Up
-                                                || action == MotionAction::PointerUp
-                                            {
-                                                event::ElementState::Released
-                                            } else {
-                                                event::ElementState::Pressed
-                                            },
-                                            button: match button {
-                                                android_activity::input::Button::Primary => MouseButton::Left,
-                                                android_activity::input::Button::Secondary => MouseButton::Right,
-                                                android_activity::input::Button::Tertiary => MouseButton::Middle,
-                                                android_activity::input::Button::Back => MouseButton::Back,
-                                                android_activity::input::Button::Forward => MouseButton::Forward,
-                                                android_activity::input::Button::StylusPrimary => MouseButton::Left,
-                                                android_activity::input::Button::StylusSecondary => MouseButton::Right,
-                                                android_activity::input::Button::__Unknown(unknown_button) => MouseButton::Other(unknown_button as u16),
-                                                _ => MouseButton::Other(0)
-                                            },
-                                        },
-                                    },
-                                    self.window_target(),
-                                );
-                            },
-                            MotionAction::Scroll => {
-                                // Mouse wheel scroll
-                                // TODO: Why this event is not firing on Samsung Dex?
-                                let h = pointer.axis_value(android_activity::input::Axis::Hscroll);
-                                let v = pointer.axis_value(android_activity::input::Axis::Vscroll);
-                                if h != 0.0 || v != 0.0 {
-                                    callback(
-                                        event::Event::WindowEvent {
-                                            window_id,
-                                            event: event::WindowEvent::MouseWheel {
-                                                device_id,
-                                                delta: event::MouseScrollDelta::LineDelta(
-                                                    h as f32, v as f32,
-                                                ),
-                                                phase: event::TouchPhase::Moved,
-                                            },
-                                        },
-                                        self.window_target(),
-                                    );
-                                }
-                            },
-                            _ => {},
-                        }
-                    },
-                    _ => {
-                        let window_id = window::WindowId(WindowId);
-                        let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
-
-                        let phase = match action {
-                            MotionAction::Down | MotionAction::PointerDown => {
-                                Some(event::TouchPhase::Started)
-                            },
-                            MotionAction::Up | MotionAction::PointerUp => {
-                                Some(event::TouchPhase::Ended)
-                            },
-                            MotionAction::Move => Some(event::TouchPhase::Moved),
-                            MotionAction::Cancel => Some(event::TouchPhase::Cancelled),
-                            _ => None,
-                        };
-                        if let Some(phase) = phase {
-                            let pointers: Box<
-                                dyn Iterator<Item = android_activity::input::Pointer<'_>>,
-                            > = match phase {
-                                event::TouchPhase::Started | event::TouchPhase::Ended => {
-                                    Box::new(std::iter::once(
-                                        motion_event.pointer_at_index(motion_event.pointer_index()),
-                                    ))
                                 },
-                                event::TouchPhase::Moved | event::TouchPhase::Cancelled => {
-                                    Box::new(motion_event.pointers())
+                                self.window_target(),
+                            );
+                        },
+                        MotionAction::ButtonPress
+                        | MotionAction::ButtonRelease
+                        | MotionAction::PointerDown
+                        | MotionAction::PointerUp
+                        // | MotionAction::HoverEnter // These Hover events are reported by Android Studio Desktop AVDs, it seems like they simulate stylus as input method, but we will redirect clicks based on `MotionAction::Down` and `MotionAction::Up`
+                        // | MotionAction::HoverExit 
+                        | MotionAction::Down
+                        | MotionAction::Up
+                        | MotionAction::Cancel=> {
+                            // Mouse button pressed
+
+                            // Skip `MotionAction::Down` and `MotionAction::Up` when source is mouse as they already reported on `MotionAction::PointerDown` and `MotionAction::PointerUp`
+                            if (source == Source::Mouse ||  source == Source::Touchpad) && (action == MotionAction::Down || action == MotionAction::Up) {
+                                return input_status;
+                            }
+
+                            let button = match button {
+                                Button::Primary => MouseButton::Left,
+                                Button::Secondary => MouseButton::Right,
+                                Button::Tertiary => MouseButton::Middle,
+                                Button::Back => MouseButton::Back,
+                                Button::Forward => MouseButton::Forward,
+                                Button::StylusPrimary => MouseButton::Left,
+                                Button::StylusSecondary => {
+                                    MouseButton::Right
+                                },
+                                Button::__Unknown(code) => {
+                                    warn!("Unknown button: {:?}, code: {}", button, code);
+                                    MouseButton::Left
+                                },
+                                _ => {
+                                    warn!("A new button variant detected: {:?}", button);
+                                    MouseButton::Left
                                 },
                             };
 
-                            for pointer in pointers {
-                                let location =
-                                    PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
-                                trace!(
-                                    "Input event {device_id:?}, {phase:?}, loc={location:?}, \
-                             pointer={pointer:?}"
-                                );
-                                let event = event::Event::WindowEvent {
+                            let state = match action {
+                                MotionAction::ButtonPress
+                                | MotionAction::Down
+                                | MotionAction::PointerDown => event::ElementState::Pressed,
+                                _ => event::ElementState::Released,
+                            };
+
+                            callback(
+                                Event::WindowEvent {
                                     window_id,
-                                    event: event::WindowEvent::Touch(event::Touch {
+                                    event: WindowEvent::MouseInput {
                                         device_id,
-                                        phase,
-                                        location,
-                                        id: pointer.pointer_id() as u64,
-                                        force: Some(Force::Normalized(pointer.pressure() as f64)),
-                                    }),
-                                };
-                                callback(event, self.window_target());
+                                        state,
+                                        button,
+                                    },
+                                },
+                                self.window_target(),
+                            );
+                        },
+                        MotionAction::Scroll => {
+                            // Mouse wheel scroll
+                            // TODO: Why this event is not firing on Samsung Dex?
+                            let h = pointer.axis_value(input::Axis::Hscroll);
+                            let v = pointer.axis_value(input::Axis::Vscroll);
+
+                            if h != 0.0 || v != 0.0 {
+                                callback(
+                                    Event::WindowEvent {
+                                        window_id,
+                                        event: WindowEvent::MouseWheel {
+                                            device_id,
+                                            delta: event::MouseScrollDelta::LineDelta(
+                                                h as f32, v as f32,
+                                            ),
+                                            phase: event::TouchPhase::Moved,
+                                        },
+                                    },
+                                    self.window_target(),
+                                );
                             }
+                        },
+                        _ => {},
+                    }
+                } else {
+                    // Treat them as touch events
+                    let window_id = window::WindowId(WindowId);
+                    let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
+
+                    let phase = match action {
+                        MotionAction::Down | MotionAction::PointerDown => {
+                            Some(event::TouchPhase::Started)
+                        },
+                        MotionAction::Up | MotionAction::PointerUp => {
+                            Some(event::TouchPhase::Ended)
+                        },
+                        MotionAction::Move => Some(event::TouchPhase::Moved),
+                        MotionAction::Cancel => Some(event::TouchPhase::Cancelled),
+                        _ => None,
+                    };
+                    if let Some(phase) = phase {
+                        let pointers: Box<dyn Iterator<Item = input::Pointer<'_>>> = match phase {
+                            event::TouchPhase::Started | event::TouchPhase::Ended => {
+                                Box::new(std::iter::once(
+                                    motion_event.pointer_at_index(motion_event.pointer_index()),
+                                ))
+                            },
+                            event::TouchPhase::Moved | event::TouchPhase::Cancelled => {
+                                Box::new(motion_event.pointers())
+                            },
+                        };
+
+                        for pointer in pointers {
+                            let location =
+                                PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
+                            trace!(
+                                "Input event {device_id:?}, {phase:?}, loc={location:?}, \
+                             pointer={pointer:?}"
+                            );
+                            let event = Event::WindowEvent {
+                                window_id,
+                                event: WindowEvent::Touch(event::Touch {
+                                    device_id,
+                                    phase,
+                                    location,
+                                    id: pointer.pointer_id() as u64,
+                                    force: Some(Force::Normalized(pointer.pressure() as f64)),
+                                }),
+                            };
+                            callback(event, self.window_target());
                         }
-                    },
+                    }
                 }
             },
             InputEvent::KeyEvent(key) => {
@@ -542,9 +562,9 @@ impl<T: 'static> EventLoop<T> {
                             &mut self.combining_accent,
                         );
 
-                        let event = event::Event::WindowEvent {
+                        let event = Event::WindowEvent {
                             window_id: window::WindowId(WindowId),
-                            event: event::WindowEvent::KeyboardInput {
+                            event: WindowEvent::KeyboardInput {
                                 device_id: event::DeviceId(DeviceId(key.device_id())),
                                 event: event::KeyEvent {
                                     state,
@@ -572,14 +592,14 @@ impl<T: 'static> EventLoop<T> {
 
     pub fn run<F>(mut self, event_handler: F) -> Result<(), EventLoopError>
     where
-        F: FnMut(event::Event<T>, &event_loop::ActiveEventLoop),
+        F: FnMut(Event<T>, &event_loop::ActiveEventLoop),
     {
         self.run_on_demand(event_handler)
     }
 
     pub fn run_on_demand<F>(&mut self, mut event_handler: F) -> Result<(), EventLoopError>
     where
-        F: FnMut(event::Event<T>, &event_loop::ActiveEventLoop),
+        F: FnMut(Event<T>, &event_loop::ActiveEventLoop),
     {
         loop {
             match self.pump_events(None, &mut event_handler) {
@@ -598,7 +618,7 @@ impl<T: 'static> EventLoop<T> {
 
     pub fn pump_events<F>(&mut self, timeout: Option<Duration>, mut callback: F) -> PumpStatus
     where
-        F: FnMut(event::Event<T>, &RootAEL),
+        F: FnMut(Event<T>, &RootAEL),
     {
         if !self.loop_running {
             self.loop_running = true;
@@ -621,7 +641,7 @@ impl<T: 'static> EventLoop<T> {
         if self.exiting() {
             self.loop_running = false;
 
-            callback(event::Event::LoopExiting, self.window_target());
+            callback(Event::LoopExiting, self.window_target());
 
             PumpStatus::Exit(0)
         } else {
@@ -631,7 +651,7 @@ impl<T: 'static> EventLoop<T> {
 
     fn poll_events_with_timeout<F>(&mut self, mut timeout: Option<Duration>, mut callback: F)
     where
-        F: FnMut(event::Event<T>, &RootAEL),
+        F: FnMut(Event<T>, &RootAEL),
     {
         let start = Instant::now();
 
