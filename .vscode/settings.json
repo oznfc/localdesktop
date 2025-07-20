@@ -12,9 +12,14 @@
     "xbuild"
   ],
   "rust-analyzer.cargo.target": "aarch64-linux-android",
-  "rust-analyzer.runnables.extraTestBinaryArgs": ["--show-output"],
+  "rust-analyzer.runnables.extraTestBinaryArgs": [
+    "--show-output"
+  ],
   "todo-tree.filtering.useBuiltInExcludes": "file and search excludes",
-  "todo-tree.filtering.excludeGlobs": ["**/node_modules/*/**", "**/patches/*"],
+  "todo-tree.filtering.excludeGlobs": [
+    "**/node_modules/*/**",
+    "**/patches/*"
+  ],
   "search.exclude": {
     "patches/*": true
   }
