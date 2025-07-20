@@ -6,7 +6,6 @@ use crate::utils::ndk::run_in_jvm;
 use crate::utils::webview::show_webview_popup;
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::Transform;
-use std::thread;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
@@ -69,10 +68,7 @@ impl ApplicationHandler for PolarBearApp {
                 backend.compositor.state.space.map_output(&output, (0, 0));
                 backend.compositor.output.replace(output);
 
-                thread::spawn(move || {
-                    let launch_command = "dbus-launch startxfce4".to_string();
-                    launch(launch_command);
-                });
+                launch();
             }
         }
     }
