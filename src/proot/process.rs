@@ -16,7 +16,7 @@ pub struct ArchProcess {
 impl ArchProcess {
     pub fn spawn(mut self) -> Self {
         // Run the command inside Proot
-        let context = get_application_context().pb_expect("Failed to get application context");
+        let context = get_application_context();
 
         #[cfg(not(test))]
         let proot_loader = context.native_library_dir.join("libproot_loader.so");

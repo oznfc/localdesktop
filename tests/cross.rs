@@ -2,8 +2,10 @@
 #[test]
 fn run_integration_tests_on_android() {
     use clap::Parser;
-    use std::{env, fmt::format, fs::create_dir_all, io, mem, process::Command, ptr};
+    use std::{env, fs::create_dir_all, mem, process::Command, ptr};
+    use tar::Archive;
     use xbuild::{Arch, BuildArgs, BuildEnv, CompileTarget, Opt, Platform};
+    use xz2::read::XzDecoder;
 
     let args = BuildArgs::parse_from(["xbuild"].iter());
     let env = BuildEnv::new(args).expect("Failed to create BuildEnv");
@@ -105,7 +107,7 @@ fn run_integration_tests_on_android() {
         );
 
         // Check if assets have been pushed to the device
-        let mut list_assets = Command::new("adb")
+        let list_assets = Command::new("adb")
             .arg("shell")
             .arg("ls")
             .arg("/data/local/tmp")
@@ -198,10 +200,6 @@ fn run_integration_tests_on_android() {
                 }
 
                 if asset.ends_with(".tar") {
-                    use std::ffi::CString;
-                    use tar::Archive;
-                    use xz2::read::XzDecoder;
-
                     // Open the .tar.xz file as an asset from disk
                     let tar_file =
                         std::fs::File::open(cwd.join(asset)).expect("Failed to open .tar.xz file");

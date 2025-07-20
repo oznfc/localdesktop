@@ -9,7 +9,7 @@ use crate::{
     },
     utils::{
         application_context::get_application_context,
-        config::{ARCH_FS_ARCHIVE, ARCH_FS_ROOT, PACMAN_CHECKING_COMMAND, PACMAN_INSTALL_PACKAGES},
+        config::{ARCH_FS_ARCHIVE, ARCH_FS_ROOT},
         logging::PolarBearExpectation,
     },
 };
@@ -104,7 +104,7 @@ fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
 }
 
 fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
-    let context = get_application_context().pb_expect("Failed to get application context");
+    let context = get_application_context();
     let temp_file = context.data_dir.join("archlinux-fs.tar.xz");
     let fs_root = Path::new(ARCH_FS_ROOT);
     let extracted_dir = context.data_dir.join("archlinux-aarch64");
@@ -234,11 +234,7 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
     return Some(thread::spawn(move || {
         loop {
             ArchProcess::exec("rm -f /var/lib/pacman/db.lck"); // Install dependencies
-            ArchProcess::exec(&format!(
-                "stdbuf -oL pacman -Syu {} --noconfirm --noprogressbar",
-                install_packages
-            ))
-            .with_log(|it| {
+            ArchProcess::exec(&install_packages).with_log(|it| {
                 mpsc_sender
                     .send(SetupMessage::Progress(it))
                     .pb_expect("Failed to send log message");
@@ -326,9 +322,11 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     let (sender, receiver) = mpsc::channel();
     let progress = Arc::new(Mutex::new(0));
 
+    let local_config = get_application_context().local_config;
+
     let options = SetupOptions {
-        install_packages: PACMAN_INSTALL_PACKAGES.to_string(),
-        checking_command: PACMAN_CHECKING_COMMAND.to_string(),
+        install_packages: local_config.command.install,
+        checking_command: local_config.command.check,
         android_app,
         mpsc_sender: sender.clone(),
     };

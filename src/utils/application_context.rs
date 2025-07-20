@@ -1,4 +1,7 @@
-use crate::utils::logging::PolarBearExpectation;
+use crate::utils::{
+    config::{parse_config, LocalConfig},
+    logging::PolarBearExpectation,
+};
 use jni::{
     objects::{JObject, JString},
     JNIEnv, JavaVM,
@@ -12,6 +15,7 @@ pub struct ApplicationContext {
     pub cache_dir: PathBuf,
     pub data_dir: PathBuf,
     pub native_library_dir: PathBuf,
+    pub local_config: LocalConfig,
 }
 
 impl ApplicationContext {
@@ -28,6 +32,7 @@ impl ApplicationContext {
         let cache_dir = Self::get_path(&mut env, &activity, "getCacheDir");
         let data_dir = Self::get_path(&mut env, &activity, "getFilesDir");
         let native_library_dir = Self::get_native_library_dir(&mut env, &activity);
+        let local_config = parse_config();
 
         {
             let mut context = APPLICATION_CONTEXT
@@ -37,6 +42,7 @@ impl ApplicationContext {
                 cache_dir,
                 data_dir,
                 native_library_dir,
+                local_config,
             });
             log::info!(
                 "ApplicationContext initialized: {:?}",
@@ -88,17 +94,19 @@ impl ApplicationContext {
 }
 
 static APPLICATION_CONTEXT: RwLock<Option<ApplicationContext>> = RwLock::new(None);
-pub fn get_application_context() -> Option<ApplicationContext> {
+pub fn get_application_context() -> ApplicationContext {
     #[cfg(test)]
-    return Some(ApplicationContext {
+    return ApplicationContext {
         cache_dir: super::config::ARCH_FS_ROOT.into(),
         data_dir: super::config::ARCH_FS_ROOT.into(),
         native_library_dir: super::config::ARCH_FS_ROOT.into(), // push mock libraries here for testing
-    });
+        local_config: LocalConfig::default(),
+    };
 
     #[cfg(not(test))]
-    APPLICATION_CONTEXT
+    return APPLICATION_CONTEXT
         .read()
         .pb_expect("Failed to read application context")
         .clone()
+        .pb_expect("ApplicationContext is not initialized. Please make sure `ApplicationContext::build(&android_app);` is called in `android_main`.");
 }
