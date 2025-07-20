@@ -2,7 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
     io::Write,
+    path::Path,
 };
+
+use crate::utils::logging::PolarBearExpectation;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -27,7 +30,14 @@ pub const CONFIG_FILE: &str = "/etc/localdesktop/localdesktop.toml";
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct LocalConfig {
+    #[serde(default)]
     pub user: UserConfig,
+
+    /// What happens if we don't assign this `#[serde(default)]` attribute?
+    /// The answer: If the user omits the `[command]` group, the WHOLE config fails to parse
+    /// => The default `[user]` group is applied (with `username=root`) even if the `[user]` settings are completely valid.
+    /// => So make sure that every config group has a `#[serde(default)]` attribute to avoid invalid sections breaking unrelated parts of the config.
+    #[serde(default)]
     pub command: CommandConfig,
 }
 
@@ -46,19 +56,33 @@ impl Default for UserConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandConfig {
+    #[serde(default = "default_check")]
     pub check: String,
+    #[serde(default = "default_install")]
     pub install: String,
+    #[serde(default = "default_launch")]
     pub launch: String,
+}
+
+fn default_check() -> String {
+    "pacman -Q xorg-xwayland && pacman -Qg xfce4 && pacman -Q onboard".to_string()
+}
+
+fn default_install() -> String {
+    "stdbuf -oL pacman -Syu xorg-xwayland xfce4 onboard --noconfirm --noprogressbar".to_string()
+}
+
+fn default_launch() -> String {
+    "XDG_RUNTIME_DIR=/tmp Xwayland -hidpi :1 2>&1 & while [ ! -e /tmp/.X11-unix/X1 ]; do sleep 0.1; done; XDG_SESSION_TYPE=x11 DISPLAY=:1 dbus-launch startxfce4 2>&1"
+                .to_string()
 }
 
 impl Default for CommandConfig {
     fn default() -> Self {
         Self {
-            check: "pacman -Q xorg-xwayland && pacman -Qg xfce4 && pacman -Q onboard".to_string(),
-            install:
-                "stdbuf -oL pacman -Syu xorg-xwayland xfce4 onboard --noconfirm --noprogressbar".to_string(),
-            launch: "XDG_RUNTIME_DIR=/tmp Xwayland -hidpi :1 2>&1 & while [ ! -e /tmp/.X11-unix/X1 ]; do sleep 0.1; done; XDG_SESSION_TYPE=x11 DISPLAY=:1 dbus-launch startxfce4 2>&1"
-                .to_string(),
+            check: default_check(),
+            install: default_install(),
+            launch: default_launch(),
         }
     }
 }
@@ -76,11 +100,6 @@ fn process_config_file() -> Vec<String> {
         for line in content.lines() {
             let trimmed = line.trim();
 
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                write_back_lines.push(line.to_string());
-                continue;
-            }
-
             if let Some((key, value)) = trimmed.split_once('=') {
                 let key = key.trim();
                 let value = value.trim();
@@ -93,7 +112,7 @@ fn process_config_file() -> Vec<String> {
                     let actual_key = key.trim_start_matches("try_");
                     if let Some(line_index) = effective_config
                         .iter()
-                        .position(|line| line.starts_with(&format!("{}=", key)))
+                        .position(|line| line.starts_with(&format!("{}=", actual_key)))
                     {
                         // Config exists, overriding
                         effective_config[line_index] = format!("{}={}", actual_key, value);
@@ -116,7 +135,9 @@ fn process_config_file() -> Vec<String> {
                     }
                 }
             } else {
+                // Keep the line as is
                 write_back_lines.push(trimmed.to_string());
+                effective_config.push(trimmed.to_string());
             }
         }
 
@@ -131,10 +152,36 @@ fn process_config_file() -> Vec<String> {
                 }
                 Ok(())
             });
+    } else {
+        // Setup config file
+        save_config(&LocalConfig::default());
     }
 
     // Convert effective config back to lines
     effective_config
+}
+
+pub fn save_config(config: &LocalConfig) {
+    let config_path = format!("{}{}", ARCH_FS_ROOT, CONFIG_FILE);
+    let config_path = Path::new(&config_path);
+    let config_dir = config_path
+        .parent()
+        .pb_expect("Failed to get parent directory");
+
+    // If the file already exists, rename it to .bak
+    if config_path.exists() {
+        let backup_path = config_path.with_extension("bak");
+        if let Err(err) = fs::rename(config_path, &backup_path) {
+            log::warn!("Failed to create backup of existing config: {}", err);
+        }
+    }
+
+    // Create config directory if it doesn't exist
+    fs::create_dir_all(config_dir).pb_expect("Failed to create config directory");
+
+    // Create and write config file
+    let config_str = toml::to_string(config).pb_expect("Failed to serialize config");
+    fs::write(config_path, config_str).pb_expect("Failed to write config file");
 }
 
 pub fn parse_config() -> LocalConfig {
@@ -143,5 +190,8 @@ pub fn parse_config() -> LocalConfig {
     if let Ok(config) = toml::from_str::<LocalConfig>(&content) {
         return config;
     }
-    return LocalConfig::default();
+    // Config malformed, giving back the default config so that the user can modify it again
+    let default_config = LocalConfig::default();
+    save_config(&default_config);
+    default_config
 }
