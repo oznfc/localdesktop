@@ -162,6 +162,14 @@ fn process_config_file() -> Vec<String> {
 }
 
 pub fn save_config(config: &LocalConfig) {
+    // If Arch FS does not exist or is empty, return early as we don't want to accidentally scaffold the /etc folder insi
+    if Path::new(ARCH_FS_ROOT)
+        .read_dir()
+        .map_or(true, |mut d| d.next().is_none())
+    {
+        return;
+    }
+
     let config_path = format!("{}{}", ARCH_FS_ROOT, CONFIG_FILE);
     let config_path = Path::new(&config_path);
     let config_dir = config_path
