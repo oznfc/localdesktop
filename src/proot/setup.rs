@@ -9,7 +9,7 @@ use crate::{
     },
     utils::{
         application_context::get_application_context,
-        config::{ARCH_FS_ARCHIVE, ARCH_FS_ROOT},
+        config::{CommandConfig, ARCH_FS_ARCHIVE, ARCH_FS_ROOT},
         logging::PolarBearExpectation,
     },
 };
@@ -37,8 +37,6 @@ pub enum SetupMessage {
 }
 
 pub struct SetupOptions {
-    pub install_packages: String,
-    pub checking_command: String,
     pub android_app: AndroidApp,
     pub mpsc_sender: Sender<SetupMessage>,
 }
@@ -53,7 +51,7 @@ type SetupStage = Box<dyn Fn(&SetupOptions) -> StageOutput + Send>;
 /// Otherwise, it should return a `JoinHandle`, so that the setup process can wait for the task to finish, but not block the main thread so that the setup progress can be reported to the user.
 type StageOutput = Option<JoinHandle<()>>;
 
-fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
+fn simulate_linux_sysdata_stage(options: &SetupOptions) -> StageOutput {
     let fs_root = Path::new(ARCH_FS_ROOT);
     let mpsc_sender = options.mpsc_sender.clone();
 
@@ -61,7 +59,7 @@ fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
         return Some(thread::spawn(move || {
             mpsc_sender
                 .send(SetupMessage::Progress(
-                    "Setting up fake system data...".to_string(),
+                    "Simulating Linux system data...".to_string(),
                 ))
                 .pb_expect(&format!("Failed to send log message"));
 
@@ -211,15 +209,19 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
 
 fn install_dependencies(options: &SetupOptions) -> StageOutput {
     let SetupOptions {
-        install_packages,
-        checking_command,
         mpsc_sender,
         android_app: _,
     } = options;
 
-    let checking_command = checking_command.clone();
+    let context = get_application_context();
+    let CommandConfig {
+        check,
+        install,
+        launch: _,
+    } = context.local_config.command;
+
     let installed = move || {
-        ArchProcess::exec(&checking_command)
+        ArchProcess::exec(&check)
             .wait()
             .pb_expect("Failed to check whether the installation target is installed")
             .success()
@@ -229,12 +231,12 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
         return None;
     }
 
-    let install_packages = install_packages.clone();
     let mpsc_sender = mpsc_sender.clone();
     return Some(thread::spawn(move || {
+        // Install dependencies until `check` succeed
         loop {
-            ArchProcess::exec("rm -f /var/lib/pacman/db.lck"); // Install dependencies
-            ArchProcess::exec(&install_packages).with_log(|it| {
+            ArchProcess::exec("rm -f /var/lib/pacman/db.lck").panic_on_error();
+            ArchProcess::exec(&install).with_log(|it| {
                 mpsc_sender
                     .send(SetupMessage::Progress(it))
                     .pb_expect("Failed to send log message");
@@ -322,21 +324,17 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     let (sender, receiver) = mpsc::channel();
     let progress = Arc::new(Mutex::new(0));
 
-    let local_config = get_application_context().local_config;
-
     let options = SetupOptions {
-        install_packages: local_config.command.install,
-        checking_command: local_config.command.check,
         android_app,
         mpsc_sender: sender.clone(),
     };
 
     let stages: Vec<SetupStage> = vec![
-        Box::new(setup_arch_fs),            // Step 1. Setup Arch FS (extract)
-        Box::new(setup_fake_sysdata_stage), // Step 2. Setup fake system data
-        Box::new(install_dependencies),     // Step 3. Install dependencies
-        Box::new(setup_firefox_config),     // Step 4. Setup Firefox config
-        Box::new(fix_xkb_symlink),          // Step 5. Fix xkb symlink (last)
+        Box::new(setup_arch_fs),                // Step 1. Setup Arch FS (extract)
+        Box::new(simulate_linux_sysdata_stage), // Step 2. Simulate Linux system data
+        Box::new(install_dependencies),         // Step 3. Install dependencies
+        Box::new(setup_firefox_config),         // Step 4. Setup Firefox config
+        Box::new(fix_xkb_symlink),              // Step 5. Fix xkb symlink (last)
     ];
 
     let handle_stage_error = |e: Box<dyn std::any::Any + Send>, sender: &Sender<SetupMessage>| {
