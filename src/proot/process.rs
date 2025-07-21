@@ -1,6 +1,7 @@
 use crate::utils::logging::PolarBearExpectation;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::Read;
 use std::process::{Child, Command, Stdio};
 
 use crate::utils::{application_context::get_application_context, config};
@@ -11,6 +12,7 @@ pub struct ArchProcess {
     pub command: String,
     pub user: String,
     pub process: Option<Child>,
+    pub panic_on_error: bool,
 }
 
 impl ArchProcess {
@@ -81,6 +83,11 @@ impl ArchProcess {
             .arg("-c")
             .arg(&self.command)
             .stdout(Stdio::piped())
+            .stderr(if self.panic_on_error {
+                Stdio::piped()
+            } else {
+                Stdio::inherit()
+            })
             .spawn()
             .pb_expect("Failed to run command");
 
@@ -93,6 +100,7 @@ impl ArchProcess {
             command: command.to_string(),
             user: "root".to_string(),
             process: None,
+            panic_on_error: false,
         }
         .spawn()
     }
@@ -102,6 +110,7 @@ impl ArchProcess {
             command: command.to_string(),
             user: user.to_string(),
             process: None,
+            panic_on_error: false,
         }
         .spawn()
     }
@@ -137,6 +146,28 @@ impl ArchProcess {
             ))
         }
     }
+
+    pub fn exec_with_panic_on_error(command: &str) {
+        if let Some(child) = (ArchProcess {
+            command: command.to_string(),
+            user: "root".to_string(),
+            process: None,
+            panic_on_error: true,
+        }
+        .spawn()
+        .process)
+        {
+            // What is the best way to get full stderr as a string?
+            if let Some(stderr) = child.stderr {
+                let mut error_output = String::new();
+                let mut reader = BufReader::new(stderr);
+                reader.read_to_string(&mut error_output).unwrap();
+                if error_output.contains("fatal error: see `libproot.so --help`") {
+                    panic!("PRoot error: {}", error_output);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -168,6 +199,7 @@ mod tests {
             command: "echo hello".to_string(),
             user: "root".to_string(),
             process: None,
+            panic_on_error: true,
         }
         .spawn()
         .with_log(|log| {

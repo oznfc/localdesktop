@@ -11,6 +11,7 @@
       }
     </style>
   </head>
+
   <body style="margin: 0">
     <div
       style="display: flex; flex-direction: column; height: 100vh; width: 100vw"
@@ -57,7 +58,7 @@
             >
               {{ new Date(log.timestamp).toLocaleTimeString() }}
             </div>
-            <div style="flex: 1">{{ log.message }}</div>
+            <div style="flex: 1; white-space: pre-wrap">{{ log.message }}</div>
           </div>
         </div>
       </div>

@@ -9,7 +9,7 @@ use crate::{
     },
     utils::{
         application_context::get_application_context,
-        config::{ARCH_FS_ARCHIVE, ARCH_FS_ROOT},
+        config::{CommandConfig, ARCH_FS_ARCHIVE, ARCH_FS_ROOT},
         logging::PolarBearExpectation,
     },
 };
@@ -37,8 +37,6 @@ pub enum SetupMessage {
 }
 
 pub struct SetupOptions {
-    pub install_packages: String,
-    pub checking_command: String,
     pub android_app: AndroidApp,
     pub mpsc_sender: Sender<SetupMessage>,
 }
@@ -53,56 +51,6 @@ type SetupStage = Box<dyn Fn(&SetupOptions) -> StageOutput + Send>;
 /// Otherwise, it should return a `JoinHandle`, so that the setup process can wait for the task to finish, but not block the main thread so that the setup progress can be reported to the user.
 type StageOutput = Option<JoinHandle<()>>;
 
-fn setup_fake_sysdata_stage(options: &SetupOptions) -> StageOutput {
-    let fs_root = Path::new(ARCH_FS_ROOT);
-    let mpsc_sender = options.mpsc_sender.clone();
-
-    if !fs_root.join("proc/.version").exists() {
-        return Some(thread::spawn(move || {
-            mpsc_sender
-                .send(SetupMessage::Progress(
-                    "Setting up fake system data...".to_string(),
-                ))
-                .pb_expect(&format!("Failed to send log message"));
-
-            // Create necessary directories - don't fail if they already exist
-            let _ = fs::create_dir_all(fs_root.join("proc"));
-            let _ = fs::create_dir_all(fs_root.join("sys"));
-            let _ = fs::create_dir_all(fs_root.join("sys/.empty"));
-
-            // Set permissions - only try to set permissions if we're on Unix and have the capability
-            #[cfg(unix)]
-            {
-                // Try to set permissions, but don't fail if we can't
-                let _ =
-                    fs::set_permissions(fs_root.join("proc"), fs::Permissions::from_mode(0o700));
-                let _ = fs::set_permissions(fs_root.join("sys"), fs::Permissions::from_mode(0o700));
-                let _ = fs::set_permissions(
-                    fs_root.join("sys/.empty"),
-                    fs::Permissions::from_mode(0o700),
-                );
-            }
-
-            // Create fake proc files
-            let proc_files = [
-                    ("proc/.loadavg", "0.12 0.07 0.02 2/165 765\n"),
-                    ("proc/.stat", "cpu  1957 0 2877 93280 262 342 254 87 0 0\ncpu0 31 0 226 12027 82 10 4 9 0 0\n"),
-                    ("proc/.uptime", "124.08 932.80\n"),
-                    ("proc/.version", "Linux version 6.2.1 (proot@termux) (gcc (GCC) 12.2.1 20230201, GNU ld (GNU Binutils) 2.40) #1 SMP PREEMPT_DYNAMIC Wed, 01 Mar 2023 00:00:00 +0000\n"),
-                    ("proc/.vmstat", "nr_free_pages 1743136\nnr_zone_inactive_anon 179281\nnr_zone_active_anon 7183\n"),
-                    ("proc/.sysctl_entry_cap_last_cap", "40\n"),
-                    ("proc/.sysctl_inotify_max_user_watches", "4096\n"),
-                ];
-
-            for (path, content) in proc_files {
-                let _ = fs::write(fs_root.join(path), content)
-                    .pb_expect(&format!("Permission denied while writing to {}", path));
-            }
-        }));
-    }
-    None
-}
-
 fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     let context = get_application_context();
     let temp_file = context.data_dir.join("archlinux-fs.tar.xz");
@@ -111,6 +59,7 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     let mpsc_sender = options.mpsc_sender.clone();
 
     // Only run if the fs_root is missing or empty
+    // TODO: Setup integration test to make sure on clean install, the fs_root is either non existent or empty
     let need_setup = fs_root.read_dir().map_or(true, |mut d| d.next().is_none());
     if need_setup {
         return Some(thread::spawn(move || {
@@ -209,17 +158,71 @@ fn setup_arch_fs(options: &SetupOptions) -> StageOutput {
     None
 }
 
+fn simulate_linux_sysdata_stage(options: &SetupOptions) -> StageOutput {
+    let fs_root = Path::new(ARCH_FS_ROOT);
+    let mpsc_sender = options.mpsc_sender.clone();
+
+    if !fs_root.join("proc/.version").exists() {
+        return Some(thread::spawn(move || {
+            mpsc_sender
+                .send(SetupMessage::Progress(
+                    "Simulating Linux system data...".to_string(),
+                ))
+                .pb_expect(&format!("Failed to send log message"));
+
+            // Create necessary directories - don't fail if they already exist
+            let _ = fs::create_dir_all(fs_root.join("proc"));
+            let _ = fs::create_dir_all(fs_root.join("sys"));
+            let _ = fs::create_dir_all(fs_root.join("sys/.empty"));
+
+            // Set permissions - only try to set permissions if we're on Unix and have the capability
+            #[cfg(unix)]
+            {
+                // Try to set permissions, but don't fail if we can't
+                let _ =
+                    fs::set_permissions(fs_root.join("proc"), fs::Permissions::from_mode(0o700));
+                let _ = fs::set_permissions(fs_root.join("sys"), fs::Permissions::from_mode(0o700));
+                let _ = fs::set_permissions(
+                    fs_root.join("sys/.empty"),
+                    fs::Permissions::from_mode(0o700),
+                );
+            }
+
+            // Create fake proc files
+            let proc_files = [
+                    ("proc/.loadavg", "0.12 0.07 0.02 2/165 765\n"),
+                    ("proc/.stat", "cpu  1957 0 2877 93280 262 342 254 87 0 0\ncpu0 31 0 226 12027 82 10 4 9 0 0\n"),
+                    ("proc/.uptime", "124.08 932.80\n"),
+                    ("proc/.version", "Linux version 6.2.1 (proot@termux) (gcc (GCC) 12.2.1 20230201, GNU ld (GNU Binutils) 2.40) #1 SMP PREEMPT_DYNAMIC Wed, 01 Mar 2023 00:00:00 +0000\n"),
+                    ("proc/.vmstat", "nr_free_pages 1743136\nnr_zone_inactive_anon 179281\nnr_zone_active_anon 7183\n"),
+                    ("proc/.sysctl_entry_cap_last_cap", "40\n"),
+                    ("proc/.sysctl_inotify_max_user_watches", "4096\n"),
+                ];
+
+            for (path, content) in proc_files {
+                let _ = fs::write(fs_root.join(path), content)
+                    .pb_expect(&format!("Permission denied while writing to {}", path));
+            }
+        }));
+    }
+    None
+}
+
 fn install_dependencies(options: &SetupOptions) -> StageOutput {
     let SetupOptions {
-        install_packages,
-        checking_command,
         mpsc_sender,
         android_app: _,
     } = options;
 
-    let checking_command = checking_command.clone();
+    let context = get_application_context();
+    let CommandConfig {
+        check,
+        install,
+        launch: _,
+    } = context.local_config.command;
+
     let installed = move || {
-        ArchProcess::exec(&checking_command)
+        ArchProcess::exec(&check)
             .wait()
             .pb_expect("Failed to check whether the installation target is installed")
             .success()
@@ -229,12 +232,12 @@ fn install_dependencies(options: &SetupOptions) -> StageOutput {
         return None;
     }
 
-    let install_packages = install_packages.clone();
     let mpsc_sender = mpsc_sender.clone();
     return Some(thread::spawn(move || {
+        // Install dependencies until `check` succeed
         loop {
-            ArchProcess::exec("rm -f /var/lib/pacman/db.lck"); // Install dependencies
-            ArchProcess::exec(&install_packages).with_log(|it| {
+            ArchProcess::exec_with_panic_on_error("rm -f /var/lib/pacman/db.lck");
+            ArchProcess::exec(&install).with_log(|it| {
                 mpsc_sender
                     .send(SetupMessage::Progress(it))
                     .pb_expect("Failed to send log message");
@@ -322,21 +325,17 @@ pub fn setup(android_app: AndroidApp) -> PolarBearBackend {
     let (sender, receiver) = mpsc::channel();
     let progress = Arc::new(Mutex::new(0));
 
-    let local_config = get_application_context().local_config;
-
     let options = SetupOptions {
-        install_packages: local_config.command.install,
-        checking_command: local_config.command.check,
         android_app,
         mpsc_sender: sender.clone(),
     };
 
     let stages: Vec<SetupStage> = vec![
-        Box::new(setup_arch_fs),            // Step 1. Setup Arch FS (extract)
-        Box::new(setup_fake_sysdata_stage), // Step 2. Setup fake system data
-        Box::new(install_dependencies),     // Step 3. Install dependencies
-        Box::new(setup_firefox_config),     // Step 4. Setup Firefox config
-        Box::new(fix_xkb_symlink),          // Step 5. Fix xkb symlink (last)
+        Box::new(setup_arch_fs),                // Step 1. Setup Arch FS (extract)
+        Box::new(simulate_linux_sysdata_stage), // Step 2. Simulate Linux system data
+        Box::new(install_dependencies),         // Step 3. Install dependencies
+        Box::new(setup_firefox_config),         // Step 4. Setup Firefox config
+        Box::new(fix_xkb_symlink),              // Step 5. Fix xkb symlink (last)
     ];
 
     let handle_stage_error = |e: Box<dyn std::any::Any + Send>, sender: &Sender<SetupMessage>| {

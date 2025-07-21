@@ -82,4 +82,8 @@ impl ApplicationHandler for PolarBearApp {
             handle(event, backend, event_loop);
         }
     }
+
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+        println!("{:?}", event_loop);
+    }
 }
