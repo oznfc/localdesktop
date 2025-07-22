@@ -118,7 +118,8 @@ fn process_config_file() -> Vec<String> {
                         effective_config[line_index] = format!("{}={}", actual_key, value);
                     } else {
                         // Config does not exist, appending
-                        effective_config.push(format!("{}={}", key, value)); // Make sure there are no spaces around = so that the check existing key logic works
+                        effective_config.push(format!("{}={}", actual_key, value));
+                        // Make sure there are no spaces around = so that the check existing key logic works
                     }
                 } else {
                     // Keep the config as is
