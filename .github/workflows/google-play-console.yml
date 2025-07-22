@@ -1,0 +1,28 @@
+name: Upload AAB to Google Play
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download AAB from Release
+        uses: robinraju/release-downloader@v1
+        with:
+          tag: ${{ github.event.release.tag_name }}
+          fileName: "target/x/localdesktop-[0-9]*.aab" # use this regex to only download the signed aab
+          out-file-path: "target"
+
+      - name: Upload to Google Play (internal track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+          packageName: app.polarbear
+          releaseFiles: target/*.aab
+          track: internal
