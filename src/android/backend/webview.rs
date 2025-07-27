@@ -1,5 +1,5 @@
-use crate::proot::setup::SetupMessage;
-use crate::utils::logging::PolarBearExpectation;
+use crate::android::proot::setup::SetupMessage;
+use crate::core::logging::PolarBearExpectation;
 use serde_json::json;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};

@@ -1,4 +1,4 @@
-use crate::utils::logging::PolarBearExpectation;
+use crate::core::logging::PolarBearExpectation;
 use jni::sys::JNIInvokeInterface_;
 use jni::{JNIEnv, JavaVM};
 use winit::platform::android::activity::AndroidApp;

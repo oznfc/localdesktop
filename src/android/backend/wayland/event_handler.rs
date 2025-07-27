@@ -1,9 +1,11 @@
-use crate::app::backend::wayland::{
-    compositor::{send_frames_surface_tree, ClientState, State},
-    element::WindowElement,
-    CentralizedEvent, WaylandBackend,
+use crate::{
+    android::backend::wayland::{
+        compositor::{send_frames_surface_tree, ClientState, State},
+        element::WindowElement,
+        CentralizedEvent, WaylandBackend,
+    },
+    core::logging::PolarBearExpectation,
 };
-use crate::utils::logging::PolarBearExpectation;
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, Event, InputEvent, KeyboardKeyEvent, PointerAxisEvent,
     PointerButtonEvent, TouchEvent,

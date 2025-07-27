@@ -1,7 +1,9 @@
-use crate::app::backend::wayland::WaylandBackend;
-use crate::app::backend::webview::WebviewBackend;
-use crate::proot::setup::setup;
 use winit::platform::android::activity::AndroidApp;
+
+use crate::android::{
+    backend::{wayland::WaylandBackend, webview::WebviewBackend},
+    proot::setup::setup,
+};
 
 pub struct PolarBearApp {
     pub frontend: PolarBearFrontend,

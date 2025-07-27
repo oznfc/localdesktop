@@ -1,5 +1,5 @@
-use crate::utils::{
-    config::{parse_config, LocalConfig},
+use crate::core::{
+    config::{parse_config, LocalConfig, ARCH_FS_ROOT, CONFIG_FILE},
     logging::PolarBearExpectation,
 };
 use jni::{
@@ -32,7 +32,8 @@ impl ApplicationContext {
         let cache_dir = Self::get_path(&mut env, &activity, "getCacheDir");
         let data_dir = Self::get_path(&mut env, &activity, "getFilesDir");
         let native_library_dir = Self::get_native_library_dir(&mut env, &activity);
-        let local_config = parse_config();
+        let full_config_path = format!("{}{}", ARCH_FS_ROOT, CONFIG_FILE);
+        let local_config = parse_config(full_config_path);
 
         {
             let mut context = APPLICATION_CONTEXT
@@ -95,15 +96,6 @@ impl ApplicationContext {
 
 static APPLICATION_CONTEXT: RwLock<Option<ApplicationContext>> = RwLock::new(None);
 pub fn get_application_context() -> ApplicationContext {
-    #[cfg(test)]
-    return ApplicationContext {
-        cache_dir: super::config::ARCH_FS_ROOT.into(),
-        data_dir: super::config::ARCH_FS_ROOT.into(),
-        native_library_dir: super::config::ARCH_FS_ROOT.into(), // push mock libraries here for testing
-        local_config: LocalConfig::default(),
-    };
-
-    #[cfg(not(test))]
     return APPLICATION_CONTEXT
         .read()
         .pb_expect("Failed to read application context")

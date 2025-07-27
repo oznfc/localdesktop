@@ -1,12 +1,13 @@
 use crate::{
-    app::build::PolarBearApp,
-    utils::{
-        application_context::ApplicationContext,
-        config,
-        fullscreen_immersive::{enable_fullscreen_immersive_mode, keep_screen_on},
-        logging::PolarBearExpectation,
-        ndk::run_in_jvm,
+    android::{
+        app::build::PolarBearApp,
+        utils::{
+            application_context::ApplicationContext,
+            fullscreen_immersive::{enable_fullscreen_immersive_mode, keep_screen_on},
+            ndk::run_in_jvm,
+        },
     },
+    core::{config, logging::PolarBearExpectation},
 };
 use sentry::integrations::log::{LogFilter, SentryLogger};
 use winit::{
