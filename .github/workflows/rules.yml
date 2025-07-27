@@ -45,13 +45,13 @@ jobs:
           echo "version=$HEAD_VERSION" >> $GITHUB_OUTPUT
           echo "Head version extracted: $HEAD_VERSION"
 
-      - name: Check if version was bumped and is greater
+      - name: Check if version was bumped
         run: |
           BASE="${{ steps.base_version.outputs.version }}"
           HEAD="${{ steps.head_version.outputs.version }}"
           echo "Base version: $BASE"
           echo "Head version: $HEAD"
-          if [ "$(printf '%s\n' "$BASE" "$HEAD" | sort -V | tail -n1)" != "$HEAD" ]; then
+          if [ "$BASE" = "$HEAD" ] || [ "$(printf '%s\n' "$BASE" "$HEAD" | sort -V | tail -n1)" != "$HEAD" ]; then
             echo "As a convention, all pull requests to main MUST change the version in Cargo.toml."
             echo "Error: New version ($HEAD) MUST be > base version ($BASE)."
             exit 1
