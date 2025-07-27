@@ -33,9 +33,9 @@ jobs:
           # Verify keystore
           keytool -list -v -keystore target/x/release/android/gradle/app/release-key.jks -storepass $ANDROID_KEYSTORE_PASSWORD
 
-      - name: Update manifest.yaml to target API 34
+      - name: Update manifest.yaml to target API 35
         run: |
-          sed -i 's/target_sdk_version: 33/target_sdk_version: 34/' manifest.yaml
+          sed -i 's/target_sdk_version: 33/target_sdk_version: 35/' manifest.yaml
 
       - name: Install LLVM
         run: sudo apt-get update && sudo apt-get install -y llvm
@@ -89,6 +89,7 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.PAT }}
           name: Local Desktop v${{ steps.extract_version.outputs.version }}
           tag_name: v${{ steps.extract_version.outputs.version }}
           files: |
@@ -96,5 +97,3 @@ jobs:
             target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.apk
             target/x/localdesktop-${{ steps.extract_version.outputs.version }}.aab
             target/x/localdesktop-${{ steps.extract_version.outputs.version }}-debug.aab
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
