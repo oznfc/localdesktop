@@ -1,3 +1,4 @@
+pub mod bind;
 mod compositor;
 mod element;
 mod event_centralizer;

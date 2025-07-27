@@ -1,11 +1,10 @@
+use super::logging::PolarBearExpectation;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
     io::Write,
     path::Path,
 };
-
-use crate::utils::logging::PolarBearExpectation;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -90,9 +89,9 @@ impl Default for CommandConfig {
 /// This function does 2 major tasks:
 /// - Read config from `CONFIG_FILE`, and override configs with their `try_*` versions, and return the configs line by line
 /// - Write back to the config file, with `try_*` configs commented out
-fn process_config_file() -> Vec<String> {
-    let full_config_path = format!("{}{}", ARCH_FS_ROOT, CONFIG_FILE);
-
+///
+/// **Important**: As each call to this function will comment out the `try_*` config, it is **non-idempotent**.
+fn process_config_file(full_config_path: String) -> Vec<String> {
     let mut write_back_lines: Vec<String> = vec![];
     let mut effective_config: Vec<String> = vec![];
 
@@ -193,8 +192,8 @@ pub fn save_config(config: &LocalConfig) {
     fs::write(config_path, config_str).pb_expect("Failed to write config file");
 }
 
-pub fn parse_config() -> LocalConfig {
-    let lines = process_config_file();
+pub fn parse_config(full_config_path: String) -> LocalConfig {
+    let lines = process_config_file(full_config_path);
     let content = lines.join("\n");
     if let Ok(config) = toml::from_str::<LocalConfig>(&content) {
         return config;
@@ -203,4 +202,92 @@ pub fn parse_config() -> LocalConfig {
     let default_config = LocalConfig::default();
     save_config(&default_config);
     default_config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn with_config_file(content: &str, f: impl Fn(String)) -> () {
+        let dir = tempdir().unwrap();
+        let base_dir = dir.path().to_str().unwrap();
+        let path = format!("{}/etc/localdesktop", base_dir);
+        fs::create_dir_all(&path).unwrap();
+        let file_path = format!("{}/localdesktop.toml", path);
+        fs::write(&file_path, content).unwrap();
+        f(file_path)
+    }
+
+    #[test]
+    fn should_handle_configs_without_try() {
+        with_config_file(
+            r#"
+                [user]
+                username = "alice"
+
+                [command]
+                check = "check-cmd"
+                install = "install-cmd"
+                launch = "launch-cmd"
+            "#,
+            |full_config_path| {
+                let config = parse_config(full_config_path);
+                assert_eq!(config.user.username, "alice");
+                assert_eq!(config.command.check, "check-cmd");
+                assert_eq!(config.command.install, "install-cmd");
+                assert_eq!(config.command.launch, "launch-cmd");
+            },
+        );
+    }
+
+    #[test]
+    fn should_handle_configs_with_try() {
+        with_config_file(
+            r#"
+                [user]
+                username = "root"
+                try_username = "testuser"
+
+                [command]
+                check = "check-cmd"
+                try_check = "try-check"
+                install = "install-cmd"
+                launch = "launch-cmd"
+            "#,
+            |full_config_path| {
+                let config = parse_config(full_config_path);
+                assert_eq!(config.user.username, "testuser");
+                assert_eq!(config.command.check, "try-check");
+                assert_eq!(config.command.install, "install-cmd")
+            },
+        );
+    }
+
+    #[test]
+    fn should_comment_out_try_configs() {
+        with_config_file(
+            r#"
+                username = "root"
+                try_username = "commented"
+
+                check = "normal"
+                try_check = "try"
+            "#,
+            |full_config_path| {
+                let _ = parse_config(full_config_path.clone()); // This triggers rewriting the config file
+                let content = fs::read_to_string(full_config_path).unwrap();
+
+                assert!(
+                    content.contains("# try_username = \"commented\""),
+                    "❌ `try_username` is not commented out after being applied"
+                );
+                assert!(
+                    content.contains("# try_check = \"try\""),
+                    "❌ `try_check` is not commented out after being  applied"
+                );
+            },
+        );
+    }
 }

@@ -1,14 +1,14 @@
 use super::process::ArchProcess;
 use crate::{
-    app::{
+    android::{
+        app::build::PolarBearBackend,
         backend::{
             wayland::{Compositor, WaylandBackend},
             webview::WebviewBackend,
         },
-        build::PolarBearBackend,
+        utils::application_context::get_application_context,
     },
-    utils::{
-        application_context::get_application_context,
+    core::{
         config::{CommandConfig, ARCH_FS_ARCHIVE, ARCH_FS_ROOT},
         logging::PolarBearExpectation,
     },

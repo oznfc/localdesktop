@@ -18,7 +18,6 @@
 //! The other types in this module are the instances of the associated types of these
 //! two traits for the winit backend.
 
-use crate::utils::logging::PolarBearExpectation;
 use khronos_egl::DynamicInstance;
 use smithay::{
     backend::{
@@ -41,6 +40,8 @@ use std::sync::Arc;
 use winit::event_loop::ActiveEventLoop;
 use winit::raw_window_handle::{AndroidNdkWindowHandle, HasWindowHandle, RawWindowHandle};
 use winit::window::{Window as WinitWindow, WindowAttributes};
+
+use crate::core::logging::PolarBearExpectation;
 
 pub struct AndroidNativeSurface {
     handle: AndroidNdkWindowHandle,

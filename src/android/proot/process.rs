@@ -1,10 +1,9 @@
-use crate::utils::logging::PolarBearExpectation;
+use crate::android::utils::application_context::get_application_context;
+use crate::core::{config, logging::PolarBearExpectation};
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
-
-use crate::utils::{application_context::get_application_context, config};
 
 pub type Log = Box<dyn Fn(String)>;
 

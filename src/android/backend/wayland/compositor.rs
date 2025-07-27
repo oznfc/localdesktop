@@ -1,6 +1,6 @@
+use super::bind::bind_socket;
 use crate::{
-    app::backend::wayland::element::WindowElement,
-    utils::{logging::PolarBearExpectation, socket::bind_socket},
+    android::backend::wayland::element::WindowElement, core::logging::PolarBearExpectation,
 };
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,

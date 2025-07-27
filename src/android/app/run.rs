@@ -1,9 +1,11 @@
 use super::build::{PolarBearApp, PolarBearBackend};
-use crate::app::backend::wayland::{bind, centralize, handle, State};
-use crate::proot::launch::launch;
-use crate::utils::config;
-use crate::utils::ndk::run_in_jvm;
-use crate::utils::webview::show_webview_popup;
+use crate::android::{
+    backend::wayland::{bind, centralize, handle, State},
+    proot::launch::launch,
+    utils::ndk::run_in_jvm,
+    utils::webview::show_webview_popup,
+};
+use crate::core::config;
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::Transform;
 use winit::application::ApplicationHandler;

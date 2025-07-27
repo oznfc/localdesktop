@@ -1,5 +1,5 @@
 use super::process::ArchProcess;
-use crate::utils::application_context::get_application_context;
+use crate::android::utils::application_context::get_application_context;
 use std::thread;
 
 pub fn launch() {
