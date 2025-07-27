@@ -22,10 +22,10 @@ jobs:
           fileName: "target/x/localdesktop-[0-9]*.aab" # use this regex to only download the signed aab
           out-file-path: "target"
 
-      - name: Upload to Google Play (internal track)
+      - name: Upload to Google Play (closed track)
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
           packageName: app.polarbear
           releaseFiles: target/*.aab
-          track: internal
+          track: closed
