@@ -43,4 +43,4 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
           packageName: app.polarbear
           releaseFiles: target/*.aab
-          track: closed
+          track: alpha
