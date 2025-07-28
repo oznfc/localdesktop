@@ -15,12 +15,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Download AAB from Release
         uses: robinraju/release-downloader@v1
         with:
           tag: ${{ github.event.release.tag_name }}
-          fileName: "target/x/localdesktop-[0-9]*.aab" # use this regex to only download the signed aab
+          fileName: "localdesktop-${{ steps.version.outputs.version }}.aab"
           out-file-path: "target"
+          extract: false
 
       - name: Upload to Google Play (closed track)
         uses: r0adkll/upload-google-play@v1
