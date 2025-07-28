@@ -1,6 +1,7 @@
 name: Upload AAB to Google Play
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
 
@@ -15,12 +16,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download AAB from Release
+      - name: Download AAB from release tag
+        if: github.event.release != null
         uses: robinraju/release-downloader@v1
         with:
           tag: ${{ github.event.release.tag_name }}
-          fileName: "target/x/localdesktop-[0-9]*.aab" # use this regex to only download the signed aab
+          fileName: "localdesktop-*.aab"
           out-file-path: "target"
+          extract: false
+
+      - name: Download latest AAB (if manually triggered)
+        if: github.event.release == null
+        uses: robinraju/release-downloader@v1
+        with:
+          latest: true
+          fileName: "localdesktop-*.aab"
+          out-file-path: "target"
+          extract: false
+
+      - name: Remove debug AABs
+        run: rm -f target/*-debug.aab
 
       - name: Upload to Google Play (closed track)
         uses: r0adkll/upload-google-play@v1
@@ -28,4 +43,4 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
           packageName: app.polarbear
           releaseFiles: target/*.aab
-          track: closed
+          track: alpha
