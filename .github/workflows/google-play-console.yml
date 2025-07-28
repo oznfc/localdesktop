@@ -1,6 +1,7 @@
 name: Upload AAB to Google Play
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
 
